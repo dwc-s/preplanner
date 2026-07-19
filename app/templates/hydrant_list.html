@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Hydrants · Pre-Planner{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1>Hydrants</h1>
+    <a class="btn btn-primary" href="{{ url_for('main.hydrant_new') }}">+ Add Hydrant</a>
+  </div>
+
+  {% if hydrants %}
+    <table class="table">
+      <thead>
+        <tr><th>Label</th><th>Flow (GPM)</th><th>Class</th><th>Type</th><th>Location</th><th>In service</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for h in hydrants %}
+          {% set code, color = h.flow_class %}
+          <tr>
+            <td>{{ h.label or "Hydrant " ~ h.id }}</td>
+            <td>{{ h.flow_gpm if h.flow_gpm is not none else "—" }}</td>
+            <td>{% if code %}<span class="dot" style="background: {{ color }}"></span>{{ code }}{% else %}—{% endif %}</td>
+            <td>{{ h.hydrant_type or "—" }}</td>
+            <td>{{ "%.5f, %.5f"|format(h.latitude, h.longitude) }}</td>
+            <td>{% if h.in_service %}Yes{% else %}<span class="sev sev-high">Out</span>{% endif %}</td>
+            <td>
+              <form method="post" action="{{ url_for('main.hydrant_delete', hydrant_id=h.id) }}"
+                    onsubmit="return confirm('Remove this hydrant?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-ghost btn-sm" type="submit">✕</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="hint">Cap colors follow NFPA 291: <span class="dot" style="background:#4dabf7"></span> AA ≥1500 ·
+      <span class="dot" style="background:#40c057"></span> A 1000–1499 ·
+      <span class="dot" style="background:#ff922b"></span> B 500–999 ·
+      <span class="dot" style="background:#fa5252"></span> C &lt;500 GPM</p>
+  {% else %}
+    <div class="empty">
+      <p>No hydrants yet.</p>
+      <p><a class="btn btn-primary" href="{{ url_for('main.hydrant_new') }}">Add a hydrant</a></p>
+    </div>
+  {% endif %}
+{% endblock %}

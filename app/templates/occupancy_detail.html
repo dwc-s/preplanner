@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}{{ occupancy.name }} · Pre-Planner{% endblock %}
+
+{% macro row(label, value) %}
+  {% if value is not none and value != "" %}
+    <div class="row"><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+  {% endif %}
+{% endmacro %}
+
+{% macro yn(label, value) %}
+  <div class="row"><dt>{{ label }}</dt><dd>{{ "Yes" if value else "No" }}</dd></div>
+{% endmacro %}
+
+{% block content %}
+  <div class="page-head">
+    <div>
+      <h1>{{ occupancy.name }}</h1>
+      {% if occupancy.full_address %}<p class="subtle">{{ occupancy.full_address }}</p>{% endif %}
+    </div>
+    <div class="actions">
+      <a class="btn" href="{{ url_for('main.occupancy_edit', occ_id=occupancy.id) }}">Edit</a>
+      <form method="post" action="{{ url_for('main.occupancy_delete', occ_id=occupancy.id) }}"
+            onsubmit="return confirm('Delete this pre-plan? This cannot be undone.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-danger" type="submit">Delete</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="cards">
+    <section class="card">
+      <h2>Building</h2>
+      <dl>
+        {{ row("Occupancy type", occupancy.occupancy_type) }}
+        {{ row("Construction", occupancy.construction_type) }}
+        {{ row("Condition", occupancy.building_condition) }}
+        {{ row("Stories", occupancy.stories) }}
+        {{ row("Square footage", occupancy.square_footage) }}
+        {{ row("Year built", occupancy.year_built) }}
+        {{ row("Roof construction", occupancy.roof_construction) }}
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2>Fire protection</h2>
+      <dl>
+        {{ yn("Sprinklered", occupancy.sprinkler_system) }}
+        {{ row("Sprinkler details", occupancy.sprinkler_details) }}
+        {{ yn("Standpipe", occupancy.standpipe_system) }}
+        {{ row("Standpipe details", occupancy.standpipe_details) }}
+        {{ yn("Fire alarm", occupancy.fire_alarm_system) }}
+        {{ row("FDC location", occupancy.fdc_location) }}
+      </dl>
+    </section>
+
+    <section class="card card-sensitive">
+      <h2>Access &amp; security</h2>
+      <dl>
+        {{ row("Knox Box", occupancy.knox_box_location) }}
+        {{ row("Annunciator", occupancy.annunciator_location) }}
+        {{ row("Gate code", occupancy.gate_code) }}
+        {{ row("Alarm PIN", occupancy.alarm_pin) }}
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2>Utility shutoffs</h2>
+      <dl>
+        {{ row("Electric", occupancy.electric_shutoff_location) }}
+        {{ row("Gas", occupancy.gas_shutoff_location) }}
+        {{ row("Water", occupancy.water_shutoff_location) }}
+      </dl>
+    </section>
+
+    {% if occupancy.water_supply_notes or occupancy.hazards_summary or occupancy.access_notes or occupancy.notes %}
+    <section class="card card-wide">
+      <h2>Notes</h2>
+      <dl>
+        {{ row("Water supply", occupancy.water_supply_notes) }}
+        {{ row("Hazards summary", occupancy.hazards_summary) }}
+        {{ row("Access", occupancy.access_notes) }}
+        {{ row("General", occupancy.notes) }}
+      </dl>
+    </section>
+    {% endif %}
+  </div>
+
+  {# --- Floor plans --- #}
+  <section class="card card-wide">
+    <h2>Floor plans</h2>
+    {% if occupancy.floor_plans %}
+      <div class="fp-thumbs">
+        {% for fp in occupancy.floor_plans %}
+          <div class="fp-thumb">
+            <a href="{{ url_for('main.floorplan_view', fp_id=fp.id) }}">
+              <img src="{{ url_for('main.floorplan_image', fp_id=fp.id) }}" alt="{{ fp.title }}">
+            </a>
+            <a class="fp-title" href="{{ url_for('main.floorplan_view', fp_id=fp.id) }}">{{ fp.title }}</a>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="subtle">No floor plans uploaded.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('main.floorplan_upload', occ_id=occupancy.id) }}"
+          enctype="multipart/form-data" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="title" placeholder="Title (optional)">
+      <input type="file" name="image" accept="image/*" required>
+      <button class="btn" type="submit">Upload floor plan</button>
+    </form>
+    <p class="hint">PNG, JPG, WEBP, or GIF up to 25&nbsp;MB. Open a plan to annotate hazards and shutoffs.</p>
+  </section>
+
+  {# --- Hazards --- #}
+  <section class="card card-wide">
+    <h2>Hazard details</h2>
+    {% if occupancy.hazards %}
+      <table class="table">
+        <thead><tr><th>Type</th><th>Severity</th><th>Location</th><th>Description</th><th></th></tr></thead>
+        <tbody>
+          {% for h in occupancy.hazards %}
+            <tr>
+              <td>{{ h.hazard_type }}</td>
+              <td>{% if h.severity %}<span class="sev sev-{{ h.severity|lower }}">{{ h.severity }}</span>{% else %}—{% endif %}</td>
+              <td>{{ h.location or "—" }}</td>
+              <td>{{ h.description or "—" }}</td>
+              <td>
+                <form method="post" action="{{ url_for('main.hazard_delete', hazard_id=h.id) }}"
+                      onsubmit="return confirm('Remove this hazard?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-ghost btn-sm" type="submit">✕</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="subtle">No structured hazards recorded.</p>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('main.hazard_add', occ_id=occupancy.id) }}" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <select name="hazard_type" required>
+        <option value="">Hazard type…</option>
+        {% for t in HAZARD_TYPES %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+      </select>
+      <select name="severity">
+        <option value="">Severity…</option>
+        {% for s in HAZARD_SEVERITIES %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+      </select>
+      <input type="text" name="location" placeholder="Location">
+      <input type="text" name="description" placeholder="Description">
+      <button class="btn" type="submit">Add hazard</button>
+    </form>
+  </section>
+
+  {# --- Contacts --- #}
+  <section class="card card-wide">
+    <h2>Contacts</h2>
+    {% if occupancy.contacts %}
+      <table class="table">
+        <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Email</th><th></th></tr></thead>
+        <tbody>
+          {% for c in occupancy.contacts %}
+            <tr>
+              <td>{{ c.name }}</td>
+              <td>{{ c.role or "—" }}</td>
+              <td>{{ c.phone or "—" }}</td>
+              <td>{{ c.email or "—" }}</td>
+              <td>
+                <form method="post" action="{{ url_for('main.contact_delete', contact_id=c.id) }}"
+                      onsubmit="return confirm('Remove this contact?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-ghost btn-sm" type="submit">✕</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="subtle">No contacts recorded.</p>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('main.contact_add', occ_id=occupancy.id) }}" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="name" placeholder="Name" required>
+      <select name="role">
+        <option value="">Role…</option>
+        {% for r in CONTACT_ROLES %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+      </select>
+      <input type="text" name="phone" placeholder="Phone">
+      <input type="email" name="email" placeholder="Email">
+      <button class="btn" type="submit">Add contact</button>
+    </form>
+  </section>
+{% endblock %}

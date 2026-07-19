@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+#
+# Pre-Planner — guided installer for PythonAnywhere + MySQL.
+#
+# Run it in a PythonAnywhere *Bash console*, from anywhere inside the project:
+#     bash deploy/install_pythonanywhere.sh
+#
+# It sets up the virtualenv, dependencies, the .env file (SECRET_KEY + MySQL
+# DATABASE_URL), the database schema, your first admin ("root") account, and a
+# ready-to-paste WSGI file. You finish in the web UI's "Web" tab (the script
+# prints exactly what to enter there).
+#
+set -euo pipefail
+
+# ---- pretty output ----------------------------------------------------------
+c_blue=$'\033[1;34m'; c_grn=$'\033[1;32m'; c_yel=$'\033[1;33m'; c_red=$'\033[1;31m'; c_off=$'\033[0m'
+info(){ printf "\n%s▶ %s%s\n" "$c_blue" "$*" "$c_off"; }
+ok(){   printf "%s✓ %s%s\n" "$c_grn" "$*" "$c_off"; }
+warn(){ printf "%s! %s%s\n" "$c_yel" "$*" "$c_off"; }
+die(){  printf "%s✗ %s%s\n" "$c_red" "$*" "$c_off" >&2; exit 1; }
+ask(){ # ask "Prompt" "default" -> echoes the answer (or the default)
+  local prompt="$1" def="${2:-}" ans
+  if [ -n "$def" ]; then read -rp "$prompt [$def]: " ans; echo "${ans:-$def}"
+  else read -rp "$prompt: " ans; echo "$ans"; fi
+}
+
+# ---- locate project root ----------------------------------------------------
+cd "$(dirname "$0")/.."
+ROOT="$(pwd)"
+[ -f "$ROOT/run.py" ] || die "run.py not found — run this from the Pre-Planner project."
+PA_USER="${USER:-$(whoami)}"
+
+printf "\n%s=== Pre-Planner installer — PythonAnywhere + MySQL ===%s\n" "$c_blue" "$c_off"
+echo   "Project:  $ROOT"
+echo   "User:     $PA_USER"
+
+# ---- 1. virtualenv + dependencies -------------------------------------------
+# Pick the Python interpreter. PythonAnywhere ships several (python3.10, 3.11…);
+# whichever you choose here MUST match the Python version you select for the web
+# app in the Web tab, or the app won't start.
+info "Choosing a Python interpreter for the virtualenv"
+PY_CANDIDATES=""
+for v in python3.13 python3.12 python3.11 python3.10 python3.9 python3.8; do
+  command -v "$v" >/dev/null 2>&1 && PY_CANDIDATES="$PY_CANDIDATES $v"
+done
+[ -n "$PY_CANDIDATES" ] || PY_CANDIDATES="$(command -v python3 || true)"
+[ -n "$PY_CANDIDATES" ] || die "No python3 found on PATH."
+echo "  Found:$PY_CANDIDATES"
+DEFAULT_PY="$(echo "$PY_CANDIDATES" | awk '{print $1}')"
+PYCHOICE="$(ask 'Python to use (match this to the web app version later)' "$DEFAULT_PY")"
+PY="$(command -v "$PYCHOICE")" || die "$PYCHOICE not found on PATH."
+
+# Pick where the virtualenv lives. Both work with PythonAnywhere's "Virtualenv"
+# field (you paste the full path); option 2 also shows up under `workon`.
+info "Virtualenv location"
+echo "  1) Project-local      — $ROOT/.venv   (default; self-contained, removed with the project)"
+echo "  2) virtualenvwrapper  — $HOME/.virtualenvs/preplanner   (PythonAnywhere convention; usable with 'workon preplanner')"
+VLOC="$(ask 'Choose 1 or 2' '1')"
+if [ "$VLOC" = "2" ]; then
+  mkdir -p "$HOME/.virtualenvs"
+  VENV_DIR="$HOME/.virtualenvs/preplanner"
+else
+  VENV_DIR="$ROOT/.venv"
+fi
+
+if [ -d "$VENV_DIR" ]; then
+  reuse="$(ask "$VENV_DIR already exists — reuse it? (Y/n)" 'Y')"
+  case "$reuse" in
+    n|N) info "Recreating $VENV_DIR ..."; rm -rf "$VENV_DIR"; "$PY" -m venv "$VENV_DIR" ;;
+    *)   info "Reusing existing $VENV_DIR" ;;
+  esac
+else
+  info "Creating $VENV_DIR with $("$PY" -V 2>&1) ..."
+  "$PY" -m venv "$VENV_DIR"
+fi
+
+VENV_PY="$VENV_DIR/bin/python"
+VENV_PIP="$VENV_DIR/bin/pip"
+VENV_FLASK="$VENV_DIR/bin/flask"
+PYVER="$("$VENV_PY" -V 2>&1 | awk '{print $2}')"
+"$VENV_PIP" install --upgrade pip >/dev/null
+info "Installing dependencies (this can take a minute) ..."
+"$VENV_PIP" install -r "$ROOT/requirements.txt"
+ok "Dependencies installed into $VENV_DIR (Python $PYVER)."
+
+# ---- 2. gather database configuration ---------------------------------------
+info "MySQL settings (from your PythonAnywhere 'Databases' tab)"
+warn "First create the database there if you haven't: open the Databases tab,"
+warn "set a MySQL password, and add a database — it becomes '${PA_USER}\$<name>'."
+DB_HOST="$(ask 'MySQL host' "${PA_USER}.mysql.pythonanywhere-services.com")"
+DB_USER="$(ask 'MySQL username' "${PA_USER}")"
+DB_NAME="$(ask 'Database name (exactly as shown in the Databases tab)' "${PA_USER}\$preplanner")"
+read -rsp "MySQL password: " DB_PASS; echo
+[ -n "$DB_PASS" ] || die "Password cannot be empty."
+
+# URL-encode the password so special characters are safe in the URL.
+ENC_PASS="$("$VENV_PY" -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$DB_PASS")"
+DB_URL="mysql+pymysql://${DB_USER}:${ENC_PASS}@${DB_HOST}/${DB_NAME}?charset=utf8mb4"
+SECRET="$("$VENV_PY" -c 'import secrets; print(secrets.token_hex(32))')"
+
+# ---- 3. write .env (single-quoted: keeps the $ in the db name literal) -------
+ENV_FILE="$ROOT/.env"
+if [ -f "$ENV_FILE" ]; then warn "Existing .env backed up to .env.bak"; cp "$ENV_FILE" "$ENV_FILE.bak"; fi
+{
+  echo "# Generated by deploy/install_pythonanywhere.sh on $(date)"
+  echo "# Values are single-quoted so the \$ in the MySQL db name is literal."
+  echo "SECRET_KEY='$SECRET'"
+  echo "DATABASE_URL='$DB_URL'"
+} > "$ENV_FILE"
+chmod 600 "$ENV_FILE"
+ok "Wrote $ENV_FILE (chmod 600)."
+
+export FLASK_APP=run
+
+# ---- 4. test the connection -------------------------------------------------
+info "Testing the database connection ..."
+if "$VENV_PY" -c "from app import create_app; from app.extensions import db; from sqlalchemy import text; a=create_app(); a.app_context().push(); db.session.execute(text('SELECT 1'))" 2>/dev/null ; then
+  ok "Connected to MySQL."
+else
+  die "Could not connect. Check the host/username/db name/password, make sure the database exists in the Databases tab, then re-run."
+fi
+
+# ---- 5. schema + admin ("root") account -------------------------------------
+info "Creating database tables (flask db upgrade) ..."
+"$VENV_FLASK" db upgrade
+ok "Schema created."
+
+info "Now create your department and first admin (root) account:"
+"$VENV_FLASK" create-admin
+
+# ---- 6. generate the WSGI file ----------------------------------------------
+WSGI_OUT="$ROOT/deploy/wsgi_generated.py"
+cat > "$WSGI_OUT" <<PY
+# PythonAnywhere WSGI config for Pre-Planner — generated $(date)
+# Paste the contents of this file into your web app's WSGI file (Web tab).
+import sys
+
+project_home = '$ROOT'
+if project_home not in sys.path:
+    sys.path.insert(0, project_home)
+
+from app import create_app          # noqa: E402
+application = create_app()
+PY
+ok "Wrote $WSGI_OUT"
+
+WSGI_TARGET="/var/www/${PA_USER}_pythonanywhere_com_wsgi.py"
+if [ -f "$WSGI_TARGET" ]; then
+  reply="$(ask "Found $WSGI_TARGET. Overwrite it now with the generated config? (y/N)" "N")"
+  case "$reply" in
+    y|Y) cp "$WSGI_OUT" "$WSGI_TARGET" && ok "Updated $WSGI_TARGET" ;;
+    *)   warn "Left $WSGI_TARGET unchanged — copy it in yourself (step 3 below)." ;;
+  esac
+else
+  warn "No web app WSGI file yet ($WSGI_TARGET). Create the web app first (step 1 below)."
+fi
+
+# ---- 7. final instructions --------------------------------------------------
+info "Finish in the PythonAnywhere 'Web' tab:"
+cat <<EOF
+
+  1. If you have no web app yet: 'Add a new web app' → 'Manual configuration' →
+     Python $PYVER  (MUST match the virtualenv's Python version).
+  2. Virtualenv:   $VENV_DIR
+  3. WSGI file:    paste $WSGI_OUT into
+                   $WSGI_TARGET
+  4. Static files (recommended, for speed):
+        URL:   /static/
+        Path:  $ROOT/app/static
+  5. Click the green Reload button.
+
+  Site:   https://${PA_USER}.pythonanywhere.com
+  Sign in with the admin account you just created.
+
+  Change settings later by editing  $ROOT/.env  then Reloading.
+  Update the app later with:
+    git pull && "$VENV_DIR/bin/pip" install -r requirements.txt && "$VENV_DIR/bin/flask" db upgrade   (then Reload)
+EOF
+ok "Install complete."

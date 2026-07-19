@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Secrets & generated deploy files (never commit these)
+.env
+.env.bak
+deploy/wsgi_generated.py
+
+# Flask instance folder (holds the local SQLite DB, secrets, uploads)
+instance/
+
+# Uploaded floor-plan images (kept out of version control)
+app/static/uploads/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Local Claude Code settings (personal, not for the repo)
+.claude/settings.local.json

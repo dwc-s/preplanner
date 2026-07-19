@@ -1,0 +1,23 @@
+# Core web framework
+Flask>=3.0,<4.0
+Flask-SQLAlchemy>=3.1,<4.0
+Flask-Login>=0.6            # session authentication
+Flask-WTF>=1.2             # CSRF protection + login/user forms
+Flask-Migrate>=4.0         # Alembic schema migrations
+Flask-Limiter>=3.5         # login rate limiting
+email-validator>=2.0       # WTForms email field validation
+python-dotenv>=1.0         # load config (SECRET_KEY, DATABASE_URL) from .env
+
+# GIS import (pure-Python, no system GDAL required)
+pyshp>=2.3                 # Shapefile parsing
+
+# WSGI server for production self-hosting (dev uses Flask's built-in server)
+gunicorn>=21.2
+
+# --- Database drivers (SQLite needs none) ---
+PyMySQL>=1.1               # MySQL / MariaDB (e.g. PythonAnywhere) — pure-Python
+# psycopg[binary]>=3.1     # PostgreSQL
+# GeoAlchemy2>=0.14        # spatial column types for PostGIS
+
+# --- Dev / test ---
+pytest>=8.0

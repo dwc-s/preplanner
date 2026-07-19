@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Add Hydrant · Pre-Planner{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1>Add Hydrant</h1>
+    <a class="btn btn-ghost" href="{{ url_for('main.hydrant_list') }}">Cancel</a>
+  </div>
+
+  <form method="post" action="{{ url_for('main.hydrant_new') }}" class="record-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <fieldset>
+      <legend>Hydrant</legend>
+      <div class="grid">
+        <label class="field"><span>Label</span>
+          <input type="text" name="label" value="{{ form.get('label') or '' }}" placeholder="e.g. H-14 / Main &amp; 3rd"></label>
+        <label class="field"><span>Latitude *</span>
+          <input type="text" name="latitude" value="{{ form.get('latitude') or '' }}" placeholder="44.2601"></label>
+        <label class="field"><span>Longitude *</span>
+          <input type="text" name="longitude" value="{{ form.get('longitude') or '' }}" placeholder="-72.5754"></label>
+        <label class="field"><span>Flow (GPM)</span>
+          <input type="number" name="flow_gpm" value="{{ form.get('flow_gpm') or '' }}"></label>
+        <label class="field"><span>Static pressure (psi)</span>
+          <input type="number" name="static_pressure" value="{{ form.get('static_pressure') or '' }}"></label>
+        <label class="field"><span>Residual pressure (psi)</span>
+          <input type="number" name="residual_pressure" value="{{ form.get('residual_pressure') or '' }}"></label>
+        <label class="field"><span>Outlet / main size</span>
+          <input type="text" name="size_inches" value="{{ form.get('size_inches') or '' }}" placeholder='e.g. 4½" steamer + 2×2½"'></label>
+        <label class="field"><span>Type</span>
+          <input type="text" name="hydrant_type" value="{{ form.get('hydrant_type') or '' }}" placeholder="Dry barrel / Wet barrel"></label>
+        <label class="field field-check">
+          <input type="checkbox" name="in_service" {% if form.get('in_service') %}checked{% endif %}>
+          <span>In service</span></label>
+        <label class="field field-wide"><span>Notes</span>
+          <input type="text" name="notes" value="{{ form.get('notes') or '' }}"></label>
+      </div>
+    </fieldset>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Save hydrant</button>
+    </div>
+  </form>
+{% endblock %}

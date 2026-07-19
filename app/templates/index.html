@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Map · Pre-Planner{% endblock %}
+{% block main_class %}full{% endblock %}
+
+{% block head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/geoman/leaflet-geoman.css') }}" />
+{% endblock %}
+
+{% block content %}
+  <div id="map"></div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+  <script src="{{ url_for('static', filename='vendor/geoman/leaflet-geoman.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/map.js') }}"></script>
+{% endblock %}

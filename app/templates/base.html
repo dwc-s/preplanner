@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block title %}Pre-Planner{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+  <meta name="theme-color" content="#c0392b">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('main.index') }}">🚒&nbsp;Pre-Planner</a>
+    {% if current_user.is_authenticated %}
+    <nav class="nav">
+      <a href="{{ url_for('main.index') }}">Map</a>
+      <a href="{{ url_for('main.occupancy_list') }}">Occupancies</a>
+      <a href="{{ url_for('main.hydrant_list') }}">Hydrants</a>
+      <a class="btn btn-primary" href="{{ url_for('main.occupancy_new') }}">+ New Pre-Plan</a>
+      {% if current_user.is_admin %}
+      <a href="{{ url_for('auth.users_list') }}">Users</a>
+      <a href="{{ url_for('main.overlays') }}">Layers</a>
+      {% endif %}
+      <a href="{{ url_for('auth.account') }}" class="nav-user">{{ current_user.name or current_user.email }} · {{ current_user.department.name }}</a>
+      <form class="nav-logout" method="post" action="{{ url_for('auth.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit">Sign out</button>
+      </form>
+    </nav>
+    {% endif %}
+  </header>
+
+  <main class="{% block main_class %}container{% endblock %}">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flashes">
+          {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <div id="offline-banner" hidden>Offline — showing saved data. Changes can't be saved until you reconnect.</div>
+
+  {% block scripts %}{% endblock %}
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("/sw.js").catch(function (e) {
+          console.warn("Service worker registration failed", e);
+        });
+      });
+    }
+    (function () {
+      var banner = document.getElementById("offline-banner");
+      function update() { if (banner) banner.hidden = navigator.onLine; }
+      window.addEventListener("online", update);
+      window.addEventListener("offline", update);
+      update();
+    })();
+  </script>
+</body>
+</html>

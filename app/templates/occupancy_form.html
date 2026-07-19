@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit" if occupancy else "New" }} Pre-Plan · Pre-Planner{% endblock %}
+
+{% block head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/geoman/leaflet-geoman.css') }}" />
+{% endblock %}
+
+{# --- reusable field macros (form dict passed in explicitly) --- #}
+{% macro tfield(form, name, label, type='text', placeholder='') %}
+  {% set v = form.get(name) %}
+  <label class="field">
+    <span>{{ label }}</span>
+    <input type="{{ type }}" name="{{ name }}" value="{{ v if v is not none else '' }}" placeholder="{{ placeholder }}">
+  </label>
+{% endmacro %}
+
+{% macro tarea(form, name, label, placeholder='') %}
+  {% set v = form.get(name) %}
+  <label class="field field-wide">
+    <span>{{ label }}</span>
+    <textarea name="{{ name }}" rows="2" placeholder="{{ placeholder }}">{{ v if v is not none else '' }}</textarea>
+  </label>
+{% endmacro %}
+
+{% macro sfield(form, name, label, options) %}
+  {% set v = form.get(name) %}
+  <label class="field">
+    <span>{{ label }}</span>
+    <select name="{{ name }}">
+      <option value="">—</option>
+      {% for opt in options %}
+        <option value="{{ opt }}" {% if v == opt %}selected{% endif %}>{{ opt }}</option>
+      {% endfor %}
+    </select>
+  </label>
+{% endmacro %}
+
+{% macro cfield(form, name, label) %}
+  {% set v = form.get(name) %}
+  <label class="field field-check">
+    <input type="checkbox" name="{{ name }}" {% if v %}checked{% endif %}>
+    <span>{{ label }}</span>
+  </label>
+{% endmacro %}
+
+{% block content %}
+  <div class="page-head">
+    <h1>{{ "Edit Pre-Plan" if occupancy else "New Pre-Plan" }}</h1>
+    {% if occupancy %}
+      <a class="btn btn-ghost" href="{{ url_for('main.occupancy_detail', occ_id=occupancy.id) }}">Cancel</a>
+    {% else %}
+      <a class="btn btn-ghost" href="{{ url_for('main.occupancy_list') }}">Cancel</a>
+    {% endif %}
+  </div>
+
+  <form method="post"
+        action="{{ url_for('main.occupancy_edit', occ_id=occupancy.id) if occupancy else url_for('main.occupancy_new') }}"
+        class="record-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <fieldset>
+      <legend>Identification</legend>
+      <div class="grid">
+        {{ tfield(form, 'name', 'Name / description *', placeholder='e.g. Riverside Elementary School') }}
+        {{ tfield(form, 'address', 'Street address') }}
+        {{ tfield(form, 'city', 'City') }}
+        {{ tfield(form, 'state', 'State') }}
+        {{ tfield(form, 'zip_code', 'ZIP') }}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Location &amp; footprint</legend>
+      <div id="occ-map" class="occ-map"></div>
+      <p class="hint">Click the map to set the building's location. Use the polygon/rectangle tools (top-left) to draw its footprint.</p>
+      <div class="grid">
+        {{ tfield(form, 'latitude', 'Latitude', placeholder='44.2601') }}
+        {{ tfield(form, 'longitude', 'Longitude', placeholder='-72.5754') }}
+      </div>
+      {% set fp = form.get('footprint_geojson') %}
+      <input type="hidden" name="footprint_geojson" value="{{ fp if fp is not none else '' }}">
+    </fieldset>
+
+    <fieldset>
+      <legend>Building</legend>
+      <div class="grid">
+        {{ sfield(form, 'occupancy_type', 'Occupancy type', OCCUPANCY_TYPES) }}
+        {{ sfield(form, 'construction_type', 'Construction type', CONSTRUCTION_TYPES) }}
+        {{ sfield(form, 'building_condition', 'Condition', BUILDING_CONDITIONS) }}
+        {{ tfield(form, 'stories', 'Stories', type='number') }}
+        {{ tfield(form, 'square_footage', 'Square footage', type='number') }}
+        {{ tfield(form, 'year_built', 'Year built', type='number') }}
+        {{ tfield(form, 'roof_construction', 'Roof construction', placeholder='e.g. lightweight wood truss') }}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Fire-protection systems</legend>
+      <div class="checks">
+        {{ cfield(form, 'sprinkler_system', 'Sprinklered') }}
+        {{ cfield(form, 'standpipe_system', 'Standpipe') }}
+        {{ cfield(form, 'fire_alarm_system', 'Fire alarm') }}
+      </div>
+      <div class="grid">
+        {{ tfield(form, 'fdc_location', 'FDC location') }}
+        {{ tarea(form, 'sprinkler_details', 'Sprinkler details') }}
+        {{ tarea(form, 'standpipe_details', 'Standpipe details') }}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Access &amp; security</legend>
+      <div class="grid">
+        {{ tfield(form, 'knox_box_location', 'Knox Box location') }}
+        {{ tfield(form, 'annunciator_location', 'Annunciator location') }}
+        {{ tfield(form, 'gate_code', 'Gate code') }}
+        {{ tfield(form, 'alarm_pin', 'Alarm PIN') }}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Utility shutoffs</legend>
+      <div class="grid">
+        {{ tfield(form, 'electric_shutoff_location', 'Electric shutoff') }}
+        {{ tfield(form, 'gas_shutoff_location', 'Gas shutoff') }}
+        {{ tfield(form, 'water_shutoff_location', 'Water shutoff') }}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Hazards, access &amp; notes</legend>
+      <div class="grid">
+        {{ tarea(form, 'water_supply_notes', 'Water supply notes', placeholder='Nearest hydrant, draft site…') }}
+        {{ tarea(form, 'hazards_summary', 'Hazards summary') }}
+        {{ tarea(form, 'access_notes', 'Access / approach notes') }}
+        {{ tarea(form, 'notes', 'General notes') }}
+      </div>
+    </fieldset>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Save pre-plan</button>
+    </div>
+  </form>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+  <script src="{{ url_for('static', filename='vendor/geoman/leaflet-geoman.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/occupancy_form_map.js') }}"></script>
+{% endblock %}

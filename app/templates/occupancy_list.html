@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Occupancies · Pre-Planner{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1>Occupancies</h1>
+    <a class="btn btn-primary" href="{{ url_for('main.occupancy_new') }}">+ New Pre-Plan</a>
+  </div>
+
+  <form class="search" method="get" action="{{ url_for('main.occupancy_list') }}">
+    <input type="search" name="q" value="{{ q }}"
+           placeholder="Search name, address, or city…" autofocus>
+    <button class="btn" type="submit">Search</button>
+    {% if q %}<a class="btn btn-ghost" href="{{ url_for('main.occupancy_list') }}">Clear</a>{% endif %}
+  </form>
+
+  {% if occupancies %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th><th>Address</th><th>Type</th>
+          <th>Construction</th><th>Sprinkler</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in occupancies %}
+          <tr onclick="location.href='{{ url_for('main.occupancy_detail', occ_id=o.id) }}'">
+            <td><a href="{{ url_for('main.occupancy_detail', occ_id=o.id) }}">{{ o.name }}</a></td>
+            <td>{{ o.full_address or "—" }}</td>
+            <td>{{ o.occupancy_type or "—" }}</td>
+            <td>{{ o.construction_type or "—" }}</td>
+            <td>{% if o.sprinkler_system %}<span class="pill pill-on">Yes</span>{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">
+      {% if q %}
+        <p>No occupancies match “{{ q }}”.</p>
+      {% else %}
+        <p>No pre-plans yet.</p>
+        <p><a class="btn btn-primary" href="{{ url_for('main.occupancy_new') }}">Create your first pre-plan</a></p>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endblock %}

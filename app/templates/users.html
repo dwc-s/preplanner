@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Users · Pre-Planner{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1>Users — {{ current_user.department.name }}</h1>
+  </div>
+
+  <table class="table">
+    <thead>
+      <tr><th>Email</th><th>Name</th><th>Role</th><th>Status</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+        <tr>
+          <td>{{ u.email }}</td>
+          <td>{{ u.name or "—" }}</td>
+          <td>{{ u.role }}</td>
+          <td>{% if u.is_active %}Active{% else %}<span class="sev sev-high">Inactive</span>{% endif %}</td>
+          <td>
+            {% if u.id != current_user.id %}
+              <div style="display:flex; gap:.4rem; flex-wrap:wrap;">
+                <form method="post" action="{{ url_for('auth.user_toggle', user_id=u.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-ghost btn-sm" type="submit">{{ "Deactivate" if u.is_active else "Reactivate" }}</button>
+                </form>
+                <form method="post" action="{{ url_for('auth.user_reset_password', user_id=u.id) }}"
+                      onsubmit="return confirm('Generate a new temporary password for {{ u.email }}?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-ghost btn-sm" type="submit">Reset password</button>
+                </form>
+              </div>
+            {% else %}
+              <span class="subtle">you</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <section class="card card-wide" style="margin-top:1rem;">
+    <h2>Add crew member</h2>
+    <form method="post" action="{{ url_for('auth.user_create') }}" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="email" name="email" placeholder="Email" required>
+      <input type="text" name="name" placeholder="Name">
+      <select name="role">
+        <option value="member">member</option>
+        <option value="admin">admin</option>
+      </select>
+      <input type="password" name="password" placeholder="Temporary password" required>
+      <button class="btn" type="submit">Add user</button>
+    </form>
+    <p class="hint">New members should change their password after first sign-in (password self-service is on the roadmap).</p>
+  </section>
+{% endblock %}
