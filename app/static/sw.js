@@ -10,7 +10,7 @@
  * Writes (POST/PUT/DELETE) are passed straight through — offline editing with a
  * sync queue is intentionally out of scope for this version.
  */
-const APP_CACHE = "preplanner-shell-v1";
+const APP_CACHE = "preplanner-shell-v3";
 const TILE_CACHE = "preplanner-tiles-v1";
 const TILE_LIMIT = 600;
 
@@ -18,6 +18,11 @@ const SHELL = [
   "/static/css/style.css",
   "/static/js/map.js",
   "/static/js/occupancy_form_map.js",
+  "/static/js/store.js",
+  "/static/js/occupancy.js",
+  "/static/js/occupancy_list.js",
+  "/static/js/conflicts.js",
+  "/static/vendor/dexie/dexie.min.js",
   "/static/vendor/leaflet/leaflet.css",
   "/static/vendor/leaflet/leaflet.js",
   "/static/vendor/leaflet/images/marker-icon.png",

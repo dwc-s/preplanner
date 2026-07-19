@@ -9,6 +9,11 @@
   <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
   <meta name="theme-color" content="#c0392b">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+  <script>
+    window.CURRENT_USER = {% if current_user.is_authenticated %}{{ {"id": current_user.id, "email": current_user.email, "department_id": current_user.department_id} | tojson }}{% else %}null{% endif %};
+  </script>
+  <script src="{{ url_for('static', filename='vendor/dexie/dexie.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/store.js') }}"></script>
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -19,11 +24,13 @@
       <a href="{{ url_for('main.index') }}">Map</a>
       <a href="{{ url_for('main.occupancy_list') }}">Occupancies</a>
       <a href="{{ url_for('main.hydrant_list') }}">Hydrants</a>
-      <a class="btn btn-primary" href="{{ url_for('main.occupancy_new') }}">+ New Pre-Plan</a>
+      <a class="btn btn-primary" href="{{ url_for('main.occupancy_editor') }}?new=1">+ New Pre-Plan</a>
       {% if current_user.is_admin %}
       <a href="{{ url_for('auth.users_list') }}">Users</a>
       <a href="{{ url_for('main.overlays') }}">Layers</a>
       {% endif %}
+      <button type="button" id="sync-now" class="nav-sync" title="Sync now">&#8635;</button>
+      <span id="sync-status" class="sync-status" aria-live="polite"></span>
       <a href="{{ url_for('auth.account') }}" class="nav-user">{{ current_user.name or current_user.email }} · {{ current_user.department.name }}</a>
       <form class="nav-logout" method="post" action="{{ url_for('auth.logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -65,6 +72,26 @@
       window.addEventListener("online", update);
       window.addEventListener("offline", update);
       update();
+    })();
+    (function () {
+      var el = document.getElementById("sync-status");
+      var btn = document.getElementById("sync-now");
+      if (!window.Store || !el) return;
+      Store.onStatus(function (s) {
+        if (!s) return;
+        var txt;
+        if (s.needsLogin) txt = "⚠ sign in to sync";
+        else if (!s.online) txt = "offline" + (s.pending ? " · " + s.pending + " pending" : "");
+        else if (s.syncing) txt = "syncing…";
+        else if (s.pending) txt = s.pending + " pending";
+        else txt = "synced";
+        if (s.conflicts) txt += " · " + s.conflicts + " conflict" + (s.conflicts > 1 ? "s" : "");
+        el.textContent = txt;
+        el.className = "sync-status" + (s.conflicts ? " has-conflicts" : "") + (s.online ? "" : " is-offline");
+        el.style.cursor = s.conflicts ? "pointer" : "";
+        el.onclick = s.conflicts ? function () { location.href = "/conflicts"; } : null;
+      });
+      if (btn) btn.addEventListener("click", function () { Store.sync(); });
     })();
   </script>
 </body>

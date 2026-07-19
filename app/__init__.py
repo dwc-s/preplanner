@@ -52,9 +52,14 @@ def create_app(config_object="config.Config"):
     from .main import main_bp
     from .api import api_bp
     from .auth import auth_bp
+    from .sync import sync_bp
     app.register_blueprint(main_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(sync_bp)
+    # /api/sync is session-authenticated same-origin JSON; exempt it from CSRF so
+    # a token cached before going offline can't expire mid-sync.
+    csrf.exempt(sync_bp)
 
     # Serve the service worker from the root so its scope covers the whole app
     # (a /static/ scope would be too narrow to control page navigations).

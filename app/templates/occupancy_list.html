@@ -4,44 +4,38 @@
 {% block content %}
   <div class="page-head">
     <h1>Occupancies</h1>
-    <a class="btn btn-primary" href="{{ url_for('main.occupancy_new') }}">+ New Pre-Plan</a>
+    <a class="btn btn-primary" href="{{ url_for('main.occupancy_editor') }}?new=1">+ New Pre-Plan</a>
   </div>
 
-  <form class="search" method="get" action="{{ url_for('main.occupancy_list') }}">
-    <input type="search" name="q" value="{{ q }}"
-           placeholder="Search name, address, or city…" autofocus>
-    <button class="btn" type="submit">Search</button>
-    {% if q %}<a class="btn btn-ghost" href="{{ url_for('main.occupancy_list') }}">Clear</a>{% endif %}
+  {# Client-side search (works offline); the server-rendered rows below are a
+     no-JS fallback, replaced by occupancy_list.js from the local store. #}
+  <form class="search" onsubmit="return false;">
+    <input type="search" id="occ-search" placeholder="Search name, address, or city…" autofocus>
   </form>
 
-  {% if occupancies %}
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Name</th><th>Address</th><th>Type</th>
-          <th>Construction</th><th>Sprinkler</th>
+  <table class="table">
+    <thead>
+      <tr><th>Name</th><th>Address</th><th>Type</th><th>Construction</th><th>Sprinkler</th></tr>
+    </thead>
+    <tbody id="occ-tbody">
+      {% for o in occupancies %}
+        <tr onclick="location.href='{{ url_for('main.occupancy_editor') }}?u={{ o.uuid }}'">
+          <td><a href="{{ url_for('main.occupancy_editor') }}?u={{ o.uuid }}">{{ o.name }}</a></td>
+          <td>{{ o.full_address or "—" }}</td>
+          <td>{{ o.occupancy_type or "—" }}</td>
+          <td>{{ o.construction_type or "—" }}</td>
+          <td>{% if o.sprinkler_system %}<span class="pill pill-on">Yes</span>{% else %}—{% endif %}</td>
         </tr>
-      </thead>
-      <tbody>
-        {% for o in occupancies %}
-          <tr onclick="location.href='{{ url_for('main.occupancy_detail', occ_id=o.id) }}'">
-            <td><a href="{{ url_for('main.occupancy_detail', occ_id=o.id) }}">{{ o.name }}</a></td>
-            <td>{{ o.full_address or "—" }}</td>
-            <td>{{ o.occupancy_type or "—" }}</td>
-            <td>{{ o.construction_type or "—" }}</td>
-            <td>{% if o.sprinkler_system %}<span class="pill pill-on">Yes</span>{% else %}—{% endif %}</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <div class="empty">
-      {% if q %}
-        <p>No occupancies match “{{ q }}”.</p>
-      {% else %}
-        <p>No pre-plans yet.</p>
-        <p><a class="btn btn-primary" href="{{ url_for('main.occupancy_new') }}">Create your first pre-plan</a></p>
-      {% endif %}
-    </div>
-  {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div id="occ-empty" class="empty" hidden>
+    <p>No pre-plans yet.</p>
+    <p><a class="btn btn-primary" href="{{ url_for('main.occupancy_editor') }}?new=1">Create your first pre-plan</a></p>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/occupancy_list.js') }}"></script>
 {% endblock %}

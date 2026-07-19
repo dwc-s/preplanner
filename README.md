@@ -51,9 +51,13 @@ occupancies/hydrants) — it prints a demo login.
 - **WMS overlays & GIS import** — configure state/county WMS parcel layers
   (toggleable on the map), and bulk-import **GeoJSON / KML / GPX / zipped
   Shapefiles** (pure-Python, no system GDAL) as map features.
-- **Installable PWA, offline viewing** — a service worker caches the app shell,
-  vendored libraries, API data, and map tiles, so crews can pull up pre-plans
-  they've already viewed with no signal. Add it to a phone's home screen.
+- **Installable PWA with offline editing + sync** — a local-first store (Dexie /
+  IndexedDB) backs the map and occupancy records, so crews can **view *and* edit**
+  pre-plans with no signal (draw features, edit fields, add hazards/contacts).
+  Changes queue in an outbox and sync via `/api/sync` on reconnect, with
+  **optimistic-concurrency conflict resolution** (keep-mine / keep-theirs on a
+  Conflicts page). Signing out wipes the local store. New floor-plan *image
+  uploads* still need a connection. Add it to a phone's home screen.
 - **JSON/GeoJSON API** — `/api/occupancies`, `/api/footprints`, `/api/hydrants`,
   `/api/map-features` (CRUD), `/api/wms-layers`.
 - **CSRF protection** on every form and AJAX write (Flask-WTF).
@@ -74,10 +78,11 @@ preplanner/
 │   ├── auth.py          # login/logout + user management
 │   ├── main.py          # server-rendered pages (map, CRUD, floor plans, overlays)
 │   ├── api.py           # JSON/GeoJSON endpoints
+│   ├── sync.py          # POST /api/sync — offline sync (apply, conflicts, delta)
 │   ├── gis_import.py    # pure-Python GeoJSON/KML/GPX/Shapefile parsers
 │   ├── templates/
-│   └── static/          # css + js; vendor/ (Leaflet/Geoman/Annotorious),
-│                        # sw.js (service worker), manifest.webmanifest, icons/
+│   └── static/          # css + js (store.js = local-first store + sync engine);
+│                        # vendor/ (Leaflet/Geoman/Annotorious/Dexie), sw.js, icons/
 └── tests/               # pytest (auth, isolation, floor plans, features, GIS, limits)
 ```
 
@@ -159,16 +164,19 @@ instance to the internet, still add:
 Done: auth + multi-tenancy, CSRF, floor-plan annotation, map drawing (footprints,
 access points, routes, custom layers, hydrant placement), account hardening
 (rate-limiting, password change/reset), WMS overlays + GIS import
-(GeoJSON/KML/GPX/Shapefile), and an installable **offline-viewing PWA**. Next, in
-rough order:
+(GeoJSON/KML/GPX/Shapefile), and an installable PWA with **offline editing +
+sync** (local-first store, outbox, optimistic-concurrency conflict resolution).
+Next, in rough order:
 
-1. **Offline editing & sync** — queue writes made offline and replay on
-   reconnect, with conflict resolution. This version caches for *viewing* only.
-2. **Forgot-password email** flow (today an admin issues a temporary password).
-3. **Heavier GIS formats** — GeoTIFF/DXF and arbitrary-CRS reprojection via
+1. **Offline for floor plans** — queue new image uploads offline (binary sync);
+   currently annotation edits sync but new uploads need a connection.
+2. **Field-level merge** — auto-merge non-overlapping field edits instead of
+   whole-record keep-mine/keep-theirs.
+3. **Forgot-password email** flow (today an admin issues a temporary password).
+4. **Heavier GIS formats** — GeoTIFF/DXF and arbitrary-CRS reprojection via
    optional GDAL/`ogr2ogr`; report/PDF export for training.
-4. **Layer polish** — opacity, reorder, per-feature styling.
-5. **Dispatch / NERIS / NFPA 1620** alignment.
+5. **Layer polish** — opacity, reorder, per-feature styling.
+6. **Dispatch / NERIS / NFPA 1620** alignment.
 
 ## License
 

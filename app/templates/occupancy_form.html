@@ -46,7 +46,7 @@
 
 {% block content %}
   <div class="page-head">
-    <h1>{{ "Edit Pre-Plan" if occupancy else "New Pre-Plan" }}</h1>
+    <h1 id="occ-title">{{ "Edit Pre-Plan" if occupancy else "New Pre-Plan" }}</h1>
     {% if occupancy %}
       <a class="btn btn-ghost" href="{{ url_for('main.occupancy_detail', occ_id=occupancy.id) }}">Cancel</a>
     {% else %}
@@ -54,7 +54,7 @@
     {% endif %}
   </div>
 
-  <form method="post"
+  <form id="occ-form" method="post"
         action="{{ url_for('main.occupancy_edit', occ_id=occupancy.id) if occupancy else url_for('main.occupancy_new') }}"
         class="record-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -142,10 +142,25 @@
       <button class="btn btn-primary" type="submit">Save pre-plan</button>
     </div>
   </form>
+
+  {% if client_mode %}<div id="occ-children"></div>{% endif %}
 {% endblock %}
 
 {% block scripts %}
   <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
   <script src="{{ url_for('static', filename='vendor/geoman/leaflet-geoman.min.js') }}"></script>
+  {% if client_mode %}
+  <script>
+    window.VOCAB = {
+      occupancy_types: {{ OCCUPANCY_TYPES | tojson }},
+      construction_types: {{ CONSTRUCTION_TYPES | tojson }},
+      building_conditions: {{ BUILDING_CONDITIONS | tojson }},
+      contact_roles: {{ CONTACT_ROLES | tojson }},
+      hazard_types: {{ HAZARD_TYPES | tojson }},
+      hazard_severities: {{ HAZARD_SEVERITIES | tojson }}
+    };
+  </script>
+  <script src="{{ url_for('static', filename='js/occupancy.js') }}"></script>
+  {% endif %}
   <script src="{{ url_for('static', filename='js/occupancy_form_map.js') }}"></script>
 {% endblock %}

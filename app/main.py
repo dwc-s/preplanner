@@ -93,6 +93,13 @@ def index():
     return render_template("index.html")
 
 
+@main_bp.get("/conflicts")
+@login_required
+def conflicts_page():
+    """Client-rendered list of unresolved offline-sync conflicts."""
+    return render_template("conflicts.html")
+
+
 # --- occupancies -------------------------------------------------------------
 
 @main_bp.get("/occupancies")
@@ -127,6 +134,14 @@ def occupancy_new():
         flash(f"Created pre-plan for {occ.name}.", "success")
         return redirect(url_for("main.occupancy_detail", occ_id=occ.id))
     return render_template("occupancy_form.html", occupancy=None, form={})
+
+
+@main_bp.get("/occupancies/edit")
+@login_required
+def occupancy_editor():
+    """Unified local-first occupancy page. Renders an empty shell; occupancy.js
+    fills and saves it from the offline store, keyed by ?u=<uuid> or ?new=1."""
+    return render_template("occupancy_form.html", occupancy=None, form={}, client_mode=True)
 
 
 @main_bp.get("/occupancies/<int:occ_id>")

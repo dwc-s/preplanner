@@ -43,6 +43,11 @@ a:hover { text-decoration: underline; }
 .nav-logout { display: inline; margin: 0; }
 .nav-logout button { color: #fff; background: transparent; border: 1px solid rgba(255,255,255,.45); padding: .4rem .7rem; border-radius: var(--radius); cursor: pointer; font: inherit; font-size: .9rem; }
 .nav-logout button:hover { background: rgba(255,255,255,.15); }
+.nav-sync { color: #fff; background: transparent; border: 1px solid rgba(255,255,255,.45); border-radius: var(--radius); cursor: pointer; font: inherit; font-size: 1rem; line-height: 1; padding: .35rem .55rem; }
+.nav-sync:hover { background: rgba(255,255,255,.15); }
+.sync-status { color: rgba(255,255,255,.8); font-size: .78rem; padding: 0 .2rem; white-space: nowrap; }
+.sync-status.is-offline { color: #ffd9b3; }
+.sync-status.has-conflicts { color: #ffb3b3; font-weight: 600; }
 
 /* login page */
 .auth-card { max-width: 380px; margin: 3rem auto; background: var(--card); padding: 1.5rem 1.5rem 1.25rem; border-radius: var(--radius); box-shadow: var(--shadow); }

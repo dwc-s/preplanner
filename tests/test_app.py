@@ -9,12 +9,15 @@ import io
 import os
 import shutil
 import tempfile
+import uuid
 
 import pytest
 
 from app import create_app
 from app.extensions import db
-from app.models import Department, User, Hydrant, FloorPlan
+from app.models import (
+    Department, User, Hydrant, FloorPlan, Occupancy, Hazard, MapFeature,
+)
 
 
 def _make_config(path, csrf=False, ratelimit=False):
@@ -449,6 +452,125 @@ def test_gis_import_parsers():
     gf = gis_import.parse_gpx(gpx)
     assert len(gf) == 2  # one waypoint + one track line
     assert gf[0]["geometry"]["coordinates"] == [-72.5, 44.2]
+
+
+# --- offline sync (/api/sync) ------------------------------------------------
+
+def _sync(client, ops, last_synced_at=None):
+    return client.post("/api/sync",
+                       json={"ops": ops, "last_synced_at": last_synced_at}).get_json()
+
+
+def test_sync_create_and_pull(client):
+    ou = str(uuid.uuid4())
+    r = _sync(client, [{"entity": "occupancy", "op": "create", "uuid": ou,
+                        "data": {"name": "Offline Bldg", "latitude": 1, "longitude": 2}}])
+    assert len(r["applied"]) == 1 and r["applied"][0]["uuid"] == ou and r["applied"][0]["id"]
+    assert r["conflicts"] == []
+    with client.application.app_context():
+        o = Occupancy.query.filter_by(uuid=ou).first()
+        assert o and o.name == "Offline Bldg" and o.department_id
+    names = [c["name"] for c in _sync(client, [])["changes"]["occupancy"]]
+    assert "Offline Bldg" in names
+
+
+def test_sync_child_applies_after_parent(client):
+    ou, hu = str(uuid.uuid4()), str(uuid.uuid4())
+    # hazard listed BEFORE its parent in the array — APPLY_ORDER must reorder.
+    r = _sync(client, [
+        {"entity": "hazard", "op": "create", "uuid": hu, "parent_uuid": ou,
+         "data": {"hazard_type": "Electrical", "severity": "High"}},
+        {"entity": "occupancy", "op": "create", "uuid": ou,
+         "data": {"name": "Parent", "latitude": 1, "longitude": 2}},
+    ])
+    assert len(r["applied"]) == 2
+    with client.application.app_context():
+        o = Occupancy.query.filter_by(uuid=ou).first()
+        h = Hazard.query.filter_by(uuid=hu).first()
+        assert h and h.occupancy_id == o.id
+
+
+def test_sync_update_conflict_not_applied(client):
+    from datetime import timedelta
+    from app.sync import _parse
+    ou = str(uuid.uuid4())
+    base = _sync(client, [{"entity": "occupancy", "op": "create", "uuid": ou,
+                           "data": {"name": "C", "latitude": 1, "longitude": 2}}])["applied"][0]["updated_at"]
+    with client.application.app_context():
+        o = Occupancy.query.filter_by(uuid=ou).first()
+        o.name = "Server Changed"
+        o.updated_at = _parse(base) + timedelta(seconds=5)  # clearly newer than client base
+        db.session.commit()
+    r = _sync(client, [{"entity": "occupancy", "op": "update", "uuid": ou,
+                        "base_updated_at": base, "data": {"name": "Client Changed"}}])
+    assert len(r["conflicts"]) == 1 and r["conflicts"][0]["server"]["name"] == "Server Changed"
+    with client.application.app_context():
+        assert Occupancy.query.filter_by(uuid=ou).first().name == "Server Changed"  # not clobbered
+
+
+def test_sync_update_success(client):
+    ou = str(uuid.uuid4())
+    base = _sync(client, [{"entity": "occupancy", "op": "create", "uuid": ou,
+                           "data": {"name": "U", "latitude": 1, "longitude": 2}}])["applied"][0]["updated_at"]
+    r = _sync(client, [{"entity": "occupancy", "op": "update", "uuid": ou,
+                        "base_updated_at": base, "data": {"name": "Updated", "gate_code": "1234"}}])
+    assert r["conflicts"] == []
+    with client.application.app_context():
+        o = Occupancy.query.filter_by(uuid=ou).first()
+        assert o.name == "Updated" and o.gate_code == "1234"
+
+
+def test_sync_delete_creates_tombstone(client):
+    fu = str(uuid.uuid4())
+    r = _sync(client, [{"entity": "map_feature", "op": "create", "uuid": fu,
+                        "data": {"category": "Access Point",
+                                 "geometry_json": '{"type":"Point","coordinates":[0,0]}'}}])
+    base, watermark = r["applied"][0]["updated_at"], r["server_time"]
+    r2 = _sync(client, [{"entity": "map_feature", "op": "delete", "uuid": fu, "base_updated_at": base}])
+    assert any(a.get("deleted") for a in r2["applied"])
+    with client.application.app_context():
+        assert MapFeature.query.filter_by(uuid=fu).first() is None
+        from app.models import Deletion
+        assert Deletion.query.filter_by(uuid=fu).first() is not None
+    assert any(d["uuid"] == fu for d in _sync(client, [], last_synced_at=watermark)["deletions"])
+
+
+def test_sync_idempotent_create(client):
+    ou = str(uuid.uuid4())
+    op = {"entity": "occupancy", "op": "create", "uuid": ou,
+          "data": {"name": "Once", "latitude": 1, "longitude": 2}}
+    id1 = _sync(client, [op])["applied"][0]["id"]
+    id2 = _sync(client, [op])["applied"][0]["id"]
+    assert id1 == id2
+    with client.application.app_context():
+        assert Occupancy.query.filter_by(uuid=ou).count() == 1
+
+
+def test_sync_missing_parent_is_conflict(client):
+    hu = str(uuid.uuid4())
+    r = _sync(client, [{"entity": "hazard", "op": "create", "uuid": hu,
+                        "parent_uuid": str(uuid.uuid4()), "data": {"hazard_type": "Electrical"}}])
+    assert any(c.get("reason") == "missing_parent" for c in r["conflicts"])
+    with client.application.app_context():
+        assert Hazard.query.filter_by(uuid=hu).first() is None
+
+
+def test_sync_department_scoping(app):
+    make_dept_user(app, "Dept A", "a@example.com")
+    make_dept_user(app, "Dept B", "b@example.com")
+    ca, cb = app.test_client(), app.test_client()
+    login(ca, "a@example.com")
+    login(cb, "b@example.com")
+    ou = str(uuid.uuid4())
+    _sync(ca, [{"entity": "occupancy", "op": "create", "uuid": ou,
+                "data": {"name": "A secret", "latitude": 1, "longitude": 2}}])
+    rb = _sync(cb, [])
+    assert all(o["uuid"] != ou for o in rb["changes"]["occupancy"])   # B can't see A's row
+    rb2 = _sync(cb, [{"entity": "occupancy", "op": "update", "uuid": ou,
+                      "base_updated_at": None, "data": {"name": "hijack"}}])
+    assert rb2["applied"] == []                                        # B can't touch it
+    with app.app_context():
+        assert Occupancy.query.filter_by(uuid=ou).first().name == "A secret"
 
 
 # --- model unit test ---------------------------------------------------------

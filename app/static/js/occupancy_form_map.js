@@ -4,8 +4,10 @@
 (function () {
   "use strict";
 
+  function initOccMap() {
   var mapEl = document.getElementById("occ-map");
-  if (!mapEl || typeof L === "undefined") return;
+  if (!mapEl || typeof L === "undefined" || mapEl._inited) return;
+  mapEl._inited = true;
 
   var latInput = document.querySelector('input[name="latitude"]');
   var lonInput = document.querySelector('input[name="longitude"]');
@@ -90,4 +92,11 @@
 
   // The map starts inside a long form; recompute size once laid out.
   setTimeout(function () { map.invalidateSize(); }, 200);
+  }
+
+  // The unified local-first page (occupancy.js) sets __occDeferMapInit and calls
+  // initOccMap() itself after populating the fields from the store; the plain
+  // server-rendered form initializes immediately.
+  window.initOccMap = initOccMap;
+  if (!window.__occDeferMapInit) initOccMap();
 })();

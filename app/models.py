@@ -16,6 +16,7 @@ instance moves to PostGIS, these text columns can be upgraded to real spatial
 columns (GeoAlchemy2) without disturbing the rest of the app.
 """
 import json
+import uuid as uuid_lib
 from datetime import datetime, timezone
 
 from flask_login import UserMixin
@@ -26,6 +27,11 @@ from .extensions import db
 
 def _utcnow():
     return datetime.now(timezone.utc)
+
+
+def _new_uuid():
+    """Stable, client-generatable key used for offline sync (see app/sync.py)."""
+    return str(uuid_lib.uuid4())
 
 
 # --- Controlled vocabularies -------------------------------------------------
@@ -151,6 +157,7 @@ class Occupancy(db.Model):
     __tablename__ = "occupancy"
 
     id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(db.String(36), unique=True, index=True, default=_new_uuid)
     department_id = db.Column(
         db.Integer, db.ForeignKey("department.id"), nullable=False, index=True
     )
@@ -286,6 +293,7 @@ class Contact(db.Model):
     __tablename__ = "contact"
 
     id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(db.String(36), unique=True, index=True, default=_new_uuid)
     occupancy_id = db.Column(
         db.Integer, db.ForeignKey("occupancy.id"), nullable=False
     )
@@ -294,12 +302,14 @@ class Contact(db.Model):
     phone = db.Column(db.String(50))
     email = db.Column(db.String(120))
     notes = db.Column(db.String(300))
+    updated_at = db.Column(db.DateTime, default=_utcnow, onupdate=_utcnow)
 
 
 class Hazard(db.Model):
     __tablename__ = "hazard"
 
     id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(db.String(36), unique=True, index=True, default=_new_uuid)
     occupancy_id = db.Column(
         db.Integer, db.ForeignKey("occupancy.id"), nullable=False
     )
@@ -307,6 +317,7 @@ class Hazard(db.Model):
     severity = db.Column(db.String(20))
     location = db.Column(db.String(200))
     description = db.Column(db.Text)
+    updated_at = db.Column(db.DateTime, default=_utcnow, onupdate=_utcnow)
 
 
 class FloorPlan(db.Model):
@@ -334,6 +345,7 @@ class Hydrant(db.Model):
     __tablename__ = "hydrant"
 
     id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(db.String(36), unique=True, index=True, default=_new_uuid)
     department_id = db.Column(
         db.Integer, db.ForeignKey("department.id"), nullable=False, index=True
     )
@@ -348,6 +360,7 @@ class Hydrant(db.Model):
     hydrant_type = db.Column(db.String(80))   # e.g. Dry barrel, Wet barrel
     in_service = db.Column(db.Boolean, default=True)
     notes = db.Column(db.String(300))
+    updated_at = db.Column(db.DateTime, default=_utcnow, onupdate=_utcnow)
 
     department = db.relationship("Department")
 
@@ -398,6 +411,7 @@ class MapFeature(db.Model):
     __tablename__ = "map_feature"
 
     id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(db.String(36), unique=True, index=True, default=_new_uuid)
     department_id = db.Column(
         db.Integer, db.ForeignKey("department.id"), nullable=False, index=True
     )
@@ -410,6 +424,7 @@ class MapFeature(db.Model):
     notes = db.Column(db.String(500))
     created_by = db.Column(db.Integer, db.ForeignKey("app_user.id"))
     created_at = db.Column(db.DateTime, default=_utcnow)
+    updated_at = db.Column(db.DateTime, default=_utcnow, onupdate=_utcnow)
 
     department = db.relationship("Department")
 
@@ -471,3 +486,21 @@ class WmsLayer(db.Model):
             "transparent": bool(self.transparent),
             "opacity": self.opacity if self.opacity is not None else 0.7,
         }
+
+
+# --- Offline sync: deletion tombstones ---------------------------------------
+
+class Deletion(db.Model):
+    """Records that a syncable row was deleted, so offline clients can learn
+    about deletes on their next pull (the row itself is hard-deleted). See
+    ``app/sync.py``."""
+
+    __tablename__ = "deletion"
+
+    id = db.Column(db.Integer, primary_key=True)
+    department_id = db.Column(
+        db.Integer, db.ForeignKey("department.id"), nullable=False, index=True
+    )
+    entity_type = db.Column(db.String(40), nullable=False)  # e.g. "map_feature"
+    uuid = db.Column(db.String(36), nullable=False, index=True)
+    deleted_at = db.Column(db.DateTime, default=_utcnow, index=True)

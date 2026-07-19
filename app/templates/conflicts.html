@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Conflicts · Pre-Planner{% endblock %}
+
+{% block content %}
+  <div class="page-head"><h1>Sync conflicts</h1></div>
+  <p class="hint">These records changed on the server while you were editing them offline.
+    Pick which version to keep — "Keep mine" re-applies your edit on top of the server's.</p>
+  <div id="conflicts-wrap"></div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/conflicts.js') }}"></script>
+{% endblock %}
