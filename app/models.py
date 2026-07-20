@@ -462,6 +462,8 @@ class MapFeature(db.Model):
     scale = db.Column(db.Float)        # size multiplier for arrow symbols (default 1)
     length = db.Column(db.Float)       # length/stretch multiplier for arrows (default 1)
     label = db.Column(db.String(200))
+    label_lat = db.Column(db.Float)    # draggable label position (null = at the symbol)
+    label_lng = db.Column(db.Float)
     geometry_json = db.Column(db.Text, nullable=False)  # GeoJSON geometry
     color = db.Column(db.String(20))
     notes = db.Column(db.String(500))
@@ -495,6 +497,8 @@ class MapFeature(db.Model):
                 "scale": self.scale,
                 "length": self.length,
                 "label": self.label,
+                "label_lat": self.label_lat,
+                "label_lng": self.label_lng,
                 "color": self.display_color,
                 "notes": self.notes,
                 "occupancy_id": self.occupancy_id,

@@ -69,7 +69,7 @@ SYNCABLE = {
     ]),
     "map_feature": EntitySpec(
         MapFeature, ["category", "symbol", "rotation", "scale", "length",
-                     "label", "geometry_json", "color", "notes"],
+                     "label", "label_lat", "label_lng", "geometry_json", "color", "notes"],
         parent="occupancy", parent_fk="occupancy_id", on_create=_set_created_by),
     "contact": EntitySpec(
         Contact, ["name", "role", "phone", "email", "notes"],

@@ -22,6 +22,8 @@ Pre-Planner has not yet cut a numbered release — everything below is on the
   staging…) whose symbols save as map features, **directional arrows** (solid /
   line / double styles) with on-hover controls to **rotate, resize and lengthen**
   them plus an always-visible label, and a **distance ruler** (feet / miles).
+  Symbols are **drag-to-move**, and each symbol's label is a **separately
+  draggable** tag that otherwise follows its symbol.
 - Hazards & contacts on a pre-plan are **editable inline** (not just add/delete),
   and the occupancy editor shows the department's **hydrants** on its map
   (toggleable), so water supply is visible while planning a building.

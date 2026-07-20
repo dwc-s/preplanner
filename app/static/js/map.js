@@ -166,8 +166,16 @@
 
   // --- map features (large set: incremental diff by uuid) --------------------
   function sigOf(f) {
-    return [f.updated_at, f.geometry_json, f.label, f.category, f.color,
-      f.symbol, f.rotation, f.scale, f.length].join("|");
+    return [f.updated_at, f.geometry_json, f.label, f.category, f.color, f.symbol,
+      f.rotation, f.scale, f.length, f.label_lat, f.label_lng].join("|");
+  }
+
+  function removeRendered(u) {
+    var r = rendered[u];
+    if (!r) return;
+    r.group.removeLayer(r.layer);
+    if (r.labelLayer) r.group.removeLayer(r.labelLayer);
+    delete rendered[u];
   }
 
   function renderFeatures(feats) {
@@ -177,32 +185,29 @@
       var cur = rendered[f.uuid];
       var sig = sigOf(f);
       if (!cur) { addFeatureLayer(f, sig); }
-      else if (cur.sig !== sig) { cur.group.removeLayer(cur.layer); addFeatureLayer(f, sig); }
+      else if (cur.sig !== sig) { removeRendered(f.uuid); addFeatureLayer(f, sig); }
     });
-    Object.keys(rendered).forEach(function (u) {
-      if (!seen[u]) { rendered[u].group.removeLayer(rendered[u].layer); delete rendered[u]; }
-    });
+    Object.keys(rendered).forEach(function (u) { if (!seen[u]) removeRendered(u); });
   }
 
   function addFeatureLayer(f, sig) {
     var geom;
     try { geom = JSON.parse(f.geometry_json); } catch (e) { return; }
     var color = f.color || featureColor(f.category);
+    var sym = f.symbol && SYMBOLS_BY_KEY[f.symbol];
     var layer;
-    if (geom.type === "Point") {
-      var sym = f.symbol && SYMBOLS_BY_KEY[f.symbol];
+    if (geom.type === "Point") {  // points are directly draggable
       var ll = [geom.coordinates[1], geom.coordinates[0]];
-      layer = sym ? L.marker(ll, { icon: symbolIcon(sym, f.rotation, f.scale, f.length) }) : L.marker(ll);
+      layer = L.marker(ll, sym ? { icon: symbolIcon(sym, f.rotation, f.scale, f.length), draggable: true }
+                               : { draggable: true });
+      layer.on("dragend", function () { onSymbolDragged(f, layer); });
     } else {
       layer = L.geoJSON({ type: "Feature", geometry: geom },
         { style: { color: color, weight: 4, fillOpacity: 0.2 } }).getLayers()[0];
     }
     layer.featureUuid = f.uuid;
     layer.bindPopup(featurePopupHtml(f));
-    var symArrow = f.symbol && SYMBOLS_BY_KEY[f.symbol] && SYMBOLS_BY_KEY[f.symbol].arrow;
-    if (symArrow) {
-      if (f.label) layer.bindTooltip(esc(f.label),
-        { permanent: true, direction: "right", offset: [12, 0], className: "arrow-label" });
+    if (sym && sym.arrow) {
       layer.on("mouseover", function () { showArrowPanel(f.uuid); });
       layer.on("mouseout", scheduleArrowPanelHide);
     }
@@ -210,15 +215,55 @@
     layer.on("pm:dragend", function () { onGeometryEdited(f, layer); });
     var group = groupForCategory(f.category);
     group.addLayer(layer);
-    rendered[f.uuid] = { layer: layer, group: group, sig: sig, f: f };
+    var reg = { layer: layer, group: group, sig: sig, f: f };
+
+    // Symbols carry a draggable, always-visible label (defaults to the symbol).
+    if (f.category === "Symbol" && f.label) {
+      var lpos = (f.label_lat != null && f.label_lng != null)
+        ? [f.label_lat, f.label_lng] : [geom.coordinates[1], geom.coordinates[0]];
+      var labelLayer = L.marker(lpos, { draggable: true, keyboard: false,
+        icon: L.divIcon({ className: "map-label", iconSize: null, iconAnchor: [-8, 9], html: esc(f.label) }) });
+      labelLayer.on("dragend", function () { onLabelDragged(f, labelLayer); });
+      group.addLayer(labelLayer);
+      reg.labelLayer = labelLayer;
+    }
+    rendered[f.uuid] = reg;
+  }
+
+  // Merge an update into the store and keep our render signature current so the
+  // re-render doesn't rebuild (and disrupt) the layer being dragged in place.
+  function persistFeature(uuid, upd) {
+    Store.update("map_feature", uuid, upd);
+    var reg = rendered[uuid];
+    if (reg) { reg.f = Object.assign({}, reg.f, upd); reg.sig = sigOf(reg.f); }
   }
 
   function onGeometryEdited(f, layer) {
-    var gj = JSON.stringify(layer.toGeoJSON().geometry);
-    Store.update("map_feature", f.uuid, { geometry_json: gj });
-    // Keep our rendered signature current so the re-render doesn't rebuild (and
-    // disrupt) the layer the user just edited in place.
-    if (rendered[f.uuid]) rendered[f.uuid].sig = sigOf(Object.assign({}, f, { geometry_json: gj }));
+    persistFeature(f.uuid, { geometry_json: JSON.stringify(layer.toGeoJSON().geometry) });
+  }
+
+  function onSymbolDragged(f, layer) {
+    var reg = rendered[f.uuid];
+    if (!reg) return;
+    var oldGeom;
+    try { oldGeom = JSON.parse(reg.f.geometry_json); } catch (e) { oldGeom = null; }
+    var to = layer.getLatLng();
+    var upd = { geometry_json: JSON.stringify({ type: "Point", coordinates: [+to.lng.toFixed(6), +to.lat.toFixed(6)] }) };
+    if (reg.labelLayer && oldGeom) {  // carry the label along with its symbol
+      var dLat = to.lat - oldGeom.coordinates[1], dLng = to.lng - oldGeom.coordinates[0];
+      var lp = reg.labelLayer.getLatLng();
+      reg.labelLayer.setLatLng([lp.lat + dLat, lp.lng + dLng]);
+      if (reg.f.label_lat != null) {
+        upd.label_lat = +(reg.f.label_lat + dLat).toFixed(6);
+        upd.label_lng = +(reg.f.label_lng + dLng).toFixed(6);
+      }
+    }
+    persistFeature(f.uuid, upd);
+  }
+
+  function onLabelDragged(f, labelLayer) {
+    var ll = labelLayer.getLatLng();
+    persistFeature(f.uuid, { label_lat: +ll.lat.toFixed(6), label_lng: +ll.lng.toFixed(6) });
   }
 
   function featurePopupHtml(f) {
@@ -461,10 +506,7 @@
     else if (action === "sizeU") scale = Math.min(4, +(scale + 0.25).toFixed(2));
     else if (action === "sizeD") scale = Math.max(0.5, +(scale - 0.25).toFixed(2));
     reg.layer.setIcon(symbolIcon(sym, rot, scale, len));
-    Store.update("map_feature", uuid, { rotation: rot, scale: scale, length: len });
-    // keep local state + sig so the re-render doesn't rebuild (hover stays stable)
-    reg.f = Object.assign({}, f, { rotation: rot, scale: scale, length: len });
-    reg.sig = sigOf(reg.f);
+    persistFeature(uuid, { rotation: rot, scale: scale, length: len });
   }
 
   // --- layer control + WMS overlays ------------------------------------------
