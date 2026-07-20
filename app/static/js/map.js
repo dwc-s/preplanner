@@ -47,10 +47,12 @@
       '<path d="M16 3 L27 18 L20 18 L20 29 L12 29 L12 18 L5 18 Z" fill="' + c +
       '" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>';
   }
-  function symbolIcon(sym, rotation) {
+  function symbolIcon(sym, rotation, scale, length) {
     if (sym.arrow) {
+      var sc = scale || 1, ln = length || 1;
+      var tf = "rotate(" + (rotation || 0) + "deg) scale(" + sc + "," + (sc * ln).toFixed(3) + ")";
       return L.divIcon({ className: "map-symbol-icon", iconSize: [28, 28], iconAnchor: [14, 14],
-        html: '<span class="map-arrow" style="transform:rotate(' + (rotation || 0) + 'deg)">' + arrowSvg(sym) + "</span>" });
+        html: '<span class="map-arrow" style="transform:' + tf + '">' + arrowSvg(sym) + "</span>" });
     }
     return L.divIcon({ className: "map-symbol-icon", iconSize: null, iconAnchor: [14, 14],
       html: '<span class="map-symbol" style="background:' + sym.color + '">' + esc(sym.code) + "</span>" });
@@ -164,7 +166,8 @@
 
   // --- map features (large set: incremental diff by uuid) --------------------
   function sigOf(f) {
-    return [f.updated_at, f.geometry_json, f.label, f.category, f.color, f.symbol, f.rotation].join("|");
+    return [f.updated_at, f.geometry_json, f.label, f.category, f.color,
+      f.symbol, f.rotation, f.scale, f.length].join("|");
   }
 
   function renderFeatures(feats) {
@@ -189,13 +192,20 @@
     if (geom.type === "Point") {
       var sym = f.symbol && SYMBOLS_BY_KEY[f.symbol];
       var ll = [geom.coordinates[1], geom.coordinates[0]];
-      layer = sym ? L.marker(ll, { icon: symbolIcon(sym, f.rotation) }) : L.marker(ll);
+      layer = sym ? L.marker(ll, { icon: symbolIcon(sym, f.rotation, f.scale, f.length) }) : L.marker(ll);
     } else {
       layer = L.geoJSON({ type: "Feature", geometry: geom },
         { style: { color: color, weight: 4, fillOpacity: 0.2 } }).getLayers()[0];
     }
     layer.featureUuid = f.uuid;
     layer.bindPopup(featurePopupHtml(f));
+    var symArrow = f.symbol && SYMBOLS_BY_KEY[f.symbol] && SYMBOLS_BY_KEY[f.symbol].arrow;
+    if (symArrow) {
+      if (f.label) layer.bindTooltip(esc(f.label),
+        { permanent: true, direction: "right", offset: [12, 0], className: "arrow-label" });
+      layer.on("mouseover", function () { showArrowPanel(f.uuid); });
+      layer.on("mouseout", scheduleArrowPanelHide);
+    }
     layer.on("pm:update", function () { onGeometryEdited(f, layer); });
     layer.on("pm:dragend", function () { onGeometryEdited(f, layer); });
     var group = groupForCategory(f.category);
@@ -215,13 +225,9 @@
     var opts = CATEGORIES.map(function (c) {
       return '<option value="' + c + '"' + (c === f.category ? " selected" : "") + ">" + c + "</option>";
     }).join("");
-    var sym = f.symbol && SYMBOLS_BY_KEY[f.symbol];
-    var rotRow = (sym && sym.arrow)
-      ? '<label class="mf-row"><span>Rotation</span><input type="range" class="mf-rot" min="0" max="345" step="15" value="' + (f.rotation || 0) + '"></label>'
-      : "";
-    return '<div class="popup mf-edit" data-uuid="' + f.uuid + '" data-symbol="' + esc(f.symbol || "") + '">' +
+    return '<div class="popup mf-edit" data-uuid="' + f.uuid + '">' +
       '<label class="mf-row"><span>Label</span><input class="mf-label" value="' + esc(f.label || "") + '"></label>' +
-      '<label class="mf-row"><span>Category</span><select class="mf-cat">' + opts + '</select></label>' + rotRow +
+      '<label class="mf-row"><span>Category</span><select class="mf-cat">' + opts + '</select></label>' +
       '<label class="mf-row"><span>Notes</span><input class="mf-notes" value="' + esc(f.notes || "") + '"></label>' +
       '<div class="mf-actions"><button type="button" class="btn btn-sm mf-save">Save</button>' +
       '<button type="button" class="btn btn-sm btn-danger mf-del">Delete</button></div></div>';
@@ -254,22 +260,6 @@
     var box = root && root.querySelector(".mf-edit");
     if (!box) return;
     var uuid = box.getAttribute("data-uuid");
-    var slider = box.querySelector(".mf-rot");
-    if (slider) {
-      var sym = SYMBOLS_BY_KEY[box.getAttribute("data-symbol")];
-      var layer = e.popup._source;
-      slider.addEventListener("input", function () {   // live visual while dragging
-        var span = layer._icon && layer._icon.querySelector(".map-arrow");
-        if (span) span.style.transform = "rotate(" + slider.value + "deg)";
-      });
-      slider.addEventListener("change", function () {  // persist on release
-        var deg = +slider.value;
-        if (sym) layer.setIcon(symbolIcon(sym, deg));
-        Store.update("map_feature", uuid, { rotation: deg });
-        var reg = rendered[uuid];
-        if (reg && reg.f) reg.sig = sigOf(Object.assign({}, reg.f, { rotation: deg }));
-      });
-    }
     box.querySelector(".mf-save").onclick = function () {
       Store.update("map_feature", uuid, {
         label: box.querySelector(".mf-label").value,
@@ -354,8 +344,14 @@
   map.addControl(new SymbolPalette());
   map.on("click", function (e) {
     if (!pendingSymbol || measuring || map.pm.globalDrawModeEnabled()) return;
-    Store.create("map_feature", { category: "Symbol", symbol: pendingSymbol,
-      geometry_json: JSON.stringify({ type: "Point", coordinates: [+e.latlng.lng.toFixed(6), +e.latlng.lat.toFixed(6)] }) });
+    var sym = SYMBOLS_BY_KEY[pendingSymbol];
+    var data = { category: "Symbol", symbol: pendingSymbol,
+      geometry_json: JSON.stringify({ type: "Point", coordinates: [+e.latlng.lng.toFixed(6), +e.latlng.lat.toFixed(6)] }) };
+    if (sym && sym.arrow) {  // arrows carry an always-visible label
+      var lbl = window.prompt("Arrow label (optional):", "");
+      if (lbl) data.label = lbl;
+    }
+    Store.create("map_feature", data);
     disarmSymbol();  // one symbol per click; pick again to place another
   });
 
@@ -412,6 +408,64 @@
     if (e.key !== "Escape") return;
     if (measuring) stopMeasure(); else if (pendingSymbol) disarmSymbol();
   });
+
+  // --- arrow hover tools: rotate / length / size -----------------------------
+  var arrowPanel = null, arrowPanelTarget = null, arrowHideTimer = null;
+  function ensureArrowPanel() {
+    if (arrowPanel) return;
+    arrowPanel = L.DomUtil.create("div", "arrow-tools", map.getContainer());
+    arrowPanel.style.display = "none";
+    arrowPanel.innerHTML =
+      '<button type="button" data-a="rotL" title="Rotate left">&#8634;</button>' +
+      '<button type="button" data-a="rotR" title="Rotate right">&#8635;</button>' +
+      '<button type="button" data-a="lenU" title="Longer">L+</button>' +
+      '<button type="button" data-a="lenD" title="Shorter">L&minus;</button>' +
+      '<button type="button" data-a="sizeU" title="Bigger">+</button>' +
+      '<button type="button" data-a="sizeD" title="Smaller">&minus;</button>';
+    L.DomEvent.disableClickPropagation(arrowPanel);
+    arrowPanel.addEventListener("mouseenter", function () { clearTimeout(arrowHideTimer); });
+    arrowPanel.addEventListener("mouseleave", scheduleArrowPanelHide);
+    arrowPanel.addEventListener("click", function (ev) {
+      var a = ev.target.getAttribute && ev.target.getAttribute("data-a");
+      if (a && arrowPanelTarget) adjustArrow(arrowPanelTarget, a);
+    });
+  }
+  function scheduleArrowPanelHide() {
+    clearTimeout(arrowHideTimer);
+    arrowHideTimer = setTimeout(function () {
+      if (arrowPanel) arrowPanel.style.display = "none";
+      arrowPanelTarget = null;
+    }, 400);
+  }
+  function showArrowPanel(uuid) {
+    var reg = rendered[uuid];
+    if (!reg) return;
+    ensureArrowPanel();
+    clearTimeout(arrowHideTimer);
+    arrowPanelTarget = uuid;
+    var pt = map.latLngToContainerPoint(reg.layer.getLatLng());
+    arrowPanel.style.left = (pt.x + 16) + "px";
+    arrowPanel.style.top = Math.max(4, pt.y - 42) + "px";
+    arrowPanel.style.display = "flex";
+  }
+  function adjustArrow(uuid, action) {
+    var reg = rendered[uuid];
+    if (!reg || !reg.f) return;
+    var f = reg.f, sym = SYMBOLS_BY_KEY[f.symbol];
+    if (!sym || !sym.arrow) return;
+    var rot = f.rotation || 0, scale = f.scale || 1, len = f.length || 1;
+    if (action === "rotL") rot = (rot - 15 + 360) % 360;
+    else if (action === "rotR") rot = (rot + 15) % 360;
+    else if (action === "lenU") len = Math.min(5, +(len + 0.25).toFixed(2));
+    else if (action === "lenD") len = Math.max(0.5, +(len - 0.25).toFixed(2));
+    else if (action === "sizeU") scale = Math.min(4, +(scale + 0.25).toFixed(2));
+    else if (action === "sizeD") scale = Math.max(0.5, +(scale - 0.25).toFixed(2));
+    reg.layer.setIcon(symbolIcon(sym, rot, scale, len));
+    Store.update("map_feature", uuid, { rotation: rot, scale: scale, length: len });
+    // keep local state + sig so the re-render doesn't rebuild (hover stays stable)
+    reg.f = Object.assign({}, f, { rotation: rot, scale: scale, length: len });
+    reg.sig = sigOf(reg.f);
+  }
 
   // --- layer control + WMS overlays ------------------------------------------
   var layersControl = L.control.layers(null, {

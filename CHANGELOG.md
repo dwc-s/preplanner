@@ -19,9 +19,9 @@ Pre-Planner has not yet cut a numbered release — everything below is on the
   to place hydrants (NFPA 291 flow-class colours), draw a footprint on the form.
 - Map annotation tools — a **placeable fire-service symbol palette** (FDC, Knox
   box, standpipe, gas/electric/water shutoffs, hazmat, hazard, command post,
-  staging…) whose symbols save as map features, **rotatable directional arrows**
-  (solid / line / double styles, aim any direction), and a **distance ruler**
-  (measures in feet / miles).
+  staging…) whose symbols save as map features, **directional arrows** (solid /
+  line / double styles) with on-hover controls to **rotate, resize and lengthen**
+  them plus an always-visible label, and a **distance ruler** (feet / miles).
 - Hazards & contacts on a pre-plan are **editable inline** (not just add/delete),
   and the occupancy editor shows the department's **hydrants** on its map
   (toggleable), so water supply is visible while planning a building.

@@ -459,6 +459,8 @@ class MapFeature(db.Model):
     category = db.Column(db.String(40), nullable=False)
     symbol = db.Column(db.String(40))  # for category "Symbol" (see MAP_SYMBOLS)
     rotation = db.Column(db.Integer)   # degrees, for directional arrow symbols
+    scale = db.Column(db.Float)        # size multiplier for arrow symbols (default 1)
+    length = db.Column(db.Float)       # length/stretch multiplier for arrows (default 1)
     label = db.Column(db.String(200))
     geometry_json = db.Column(db.Text, nullable=False)  # GeoJSON geometry
     color = db.Column(db.String(20))
@@ -490,6 +492,8 @@ class MapFeature(db.Model):
                 "category": self.category,
                 "symbol": self.symbol,
                 "rotation": self.rotation,
+                "scale": self.scale,
+                "length": self.length,
                 "label": self.label,
                 "color": self.display_color,
                 "notes": self.notes,

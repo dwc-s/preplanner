@@ -68,7 +68,8 @@ SYNCABLE = {
         "residual_pressure", "size_inches", "hydrant_type", "in_service", "notes",
     ]),
     "map_feature": EntitySpec(
-        MapFeature, ["category", "symbol", "rotation", "label", "geometry_json", "color", "notes"],
+        MapFeature, ["category", "symbol", "rotation", "scale", "length",
+                     "label", "geometry_json", "color", "notes"],
         parent="occupancy", parent_fk="occupancy_id", on_create=_set_created_by),
     "contact": EntitySpec(
         Contact, ["name", "role", "phone", "email", "notes"],

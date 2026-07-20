@@ -760,14 +760,15 @@ def test_hydrant_flow_class(gpm, expected):
 def test_sync_map_feature_symbol_round_trips(client):
     fu = str(uuid.uuid4())
     r = _sync(client, [{"entity": "map_feature", "op": "create", "uuid": fu, "data": {
-        "category": "Symbol", "symbol": "arrow", "rotation": 90,
-        "geometry_json": '{"type":"Point","coordinates":[-72.5,44.2]}'}}])
+        "category": "Symbol", "symbol": "arrow", "rotation": 90, "scale": 1.5, "length": 2.0,
+        "label": "Egress", "geometry_json": '{"type":"Point","coordinates":[-72.5,44.2]}'}}])
     assert len(r["applied"]) == 1
     with client.application.app_context():
         row = MapFeature.query.filter_by(uuid=fu).first()
-        assert row.symbol == "arrow" and row.rotation == 90
+        assert row.symbol == "arrow" and row.rotation == 90 and row.scale == 1.5 and row.length == 2.0
     pulled = _sync(client, [])["changes"]["map_feature"]
-    assert any(f["symbol"] == "arrow" and f["rotation"] == 90 for f in pulled)
+    assert any(f["symbol"] == "arrow" and f["rotation"] == 90 and f["scale"] == 1.5
+               and f["length"] == 2.0 and f["label"] == "Egress" for f in pulled)
 
 
 def test_user_create_with_rank(client):
