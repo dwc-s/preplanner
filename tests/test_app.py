@@ -411,6 +411,47 @@ def test_wms_cross_department(app):
     assert cb.get("/api/wms-layers").get_json() == []
 
 
+def test_wms_overlay_add_bulk(client):
+    r = client.post("/overlays/add-bulk", json={
+        "url": "https://gis.example/wms",
+        "layers": [
+            {"name": "massgis:GISDATA.STRUCTURES_POLY", "title": "Building Structures (2-D)"},
+            {"name": "massgis:GISDATA.L3_TAXPAR_POLY_ASSESS", "title": "Parcels"},
+        ],
+    })
+    assert r.status_code == 200 and r.get_json()["added"] == 2
+    api = client.get("/api/wms-layers").get_json()
+    by_layer = {w["layers"]: w for w in api}
+    # display name comes from the human title; the WMS layer name lives in `layers`
+    assert by_layer["massgis:GISDATA.STRUCTURES_POLY"]["name"] == "Building Structures (2-D)"
+    # overlays must be transparent by default so they don't hide the basemap
+    assert all(w["transparent"] is True for w in api)
+
+    # re-adding the same layer is idempotent (no duplicate rows)
+    r2 = client.post("/overlays/add-bulk", json={
+        "url": "https://gis.example/wms",
+        "layers": [{"name": "massgis:GISDATA.STRUCTURES_POLY", "title": "dupe"}],
+    })
+    assert r2.get_json()["added"] == 0
+    assert len(client.get("/api/wms-layers").get_json()) == 2
+
+
+def test_wms_overlay_add_bulk_validates(client):
+    assert client.post("/overlays/add-bulk", json={"url": "", "layers": []}).status_code == 400
+    assert client.post("/overlays/add-bulk", json={"url": "https://x/wms", "layers": []}).status_code == 400
+    # a layer entry with no usable name is skipped, not fatal
+    r = client.post("/overlays/add-bulk", json={"url": "https://x/wms", "layers": [{"title": "no name"}]})
+    assert r.status_code == 200 and r.get_json()["added"] == 0
+
+
+def test_wms_overlay_add_bulk_admin_only(app):
+    make_dept_user(app, "Dept A", "member@example.com", role="member")
+    c = app.test_client()
+    login(c, "member@example.com")
+    r = c.post("/overlays/add-bulk", json={"url": "https://x/wms", "layers": [{"name": "p"}]})
+    assert r.status_code == 403
+
+
 def test_gis_import_geojson(client):
     import json as _json
     fc = {"type": "FeatureCollection", "features": [

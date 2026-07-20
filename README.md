@@ -48,9 +48,10 @@ occupancies/hydrants) — it prints a demo login.
   [Leaflet-Geoman](https://geoman.io); click to place hydrants; draw a building
   footprint and set its point right on the pre-plan form.
 - **Hydrants** — add/list/delete, NFPA 291 flow-class colour coding.
-- **WMS overlays & GIS import** — configure state/county WMS parcel layers
-  (toggleable on the map), and bulk-import **GeoJSON / KML / GPX / zipped
-  Shapefiles** (pure-Python, no system GDAL) as map features.
+- **WMS overlays & GIS import** — add state/county WMS layers by pasting the
+  server's URL and **picking from its layer list** — no need to know layer names;
+  each choice becomes a toggleable map overlay. Also bulk-import **GeoJSON / KML /
+  GPX / zipped Shapefiles** (pure-Python, no system GDAL) as map features.
 - **Installable PWA with offline editing + sync** — a local-first store (Dexie /
   IndexedDB) backs the map and occupancy records, so crews can **view *and* edit**
   pre-plans with no signal (draw features, edit fields, add hazards/contacts).

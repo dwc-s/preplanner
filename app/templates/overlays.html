@@ -31,27 +31,39 @@
       <p class="subtle">No WMS overlays configured.</p>
     {% endif %}
 
-    <form method="post" action="{{ url_for('main.overlay_add') }}" class="inline-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="name" placeholder="Display name (e.g. MassGIS Parcels)" required>
-      <input type="url" name="url" placeholder="WMS base URL (https://…)" required>
-      <input type="text" name="layers" placeholder="WMS layer name (e.g. massgis:GISDATA.STRUCTURES_POLY)" required>
-      <input type="number" name="opacity" placeholder="0.7" step="0.1" min="0" max="1" style="max-width:90px;">
-      <label style="display:inline-flex;align-items:center;gap:.35em;white-space:nowrap;">
-        <input type="checkbox" name="transparent" value="1" checked> Transparent
-      </label>
-      <button class="btn" type="submit">Add overlay</button>
-    </form>
-    <p class="hint">
-      <strong>Layers</strong> must be the server’s WMS <em>layer name</em> (from its
-      GetCapabilities), <em>not</em> the display name. For MassGIS
-      (<code>https://gis-prod.digital.mass.gov/geoserver/wms</code>) useful names are
-      <code>massgis:GISDATA.L3_TAXPAR_POLY_ASSESS</code> (parcels),
-      <code>massgis:GISDATA.STRUCTURES_POLY</code> (building footprints), and
-      <code>massgis:GISDATA.FIRESTATIONS_PT_MEMA</code> (fire stations).
-      Leave <strong>Transparent</strong> checked so the overlay doesn’t cover the basemap.
-      Enabled overlays become toggleable layers on the map.
-    </p>
+    <h3 class="subhead">Add overlays from a WMS server</h3>
+    <p class="hint">Paste a WMS endpoint and pick the layers you want — no GIS knowledge needed.
+      For Massachusetts, try <code>https://gis-prod.digital.mass.gov/geoserver/wms</code>.</p>
+    <div class="inline-form">
+      <input type="url" id="wms-url" placeholder="WMS base URL (https://…/geoserver/wms)" style="flex:1;min-width:16rem;">
+      <button type="button" class="btn btn-primary" id="wms-load">Load layers</button>
+    </div>
+    <p id="wms-load-status" class="hint" aria-live="polite"></p>
+
+    <div id="wms-picker" hidden>
+      <div class="inline-form">
+        <input type="search" id="wms-search" placeholder="Search layers (parcels, structures, hydrants…)" style="flex:1;">
+        <span id="wms-selected-count" class="subtle"></span>
+        <button type="button" class="btn btn-primary" id="wms-add-selected" disabled>Add selected</button>
+      </div>
+      <div id="wms-list" class="wms-list"></div>
+      <p class="hint">Each layer you add becomes its own toggleable overlay on the map (transparent, so it won’t hide the basemap).</p>
+    </div>
+
+    <details class="wms-manual">
+      <summary>Add a layer manually (for servers that block automatic loading)</summary>
+      <form method="post" action="{{ url_for('main.overlay_add') }}" class="inline-form" style="margin-top:.4rem;border-top:0;padding-top:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="name" placeholder="Display name (e.g. MassGIS Parcels)" required>
+        <input type="url" name="url" placeholder="WMS base URL (https://…)" required>
+        <input type="text" name="layers" placeholder="WMS layer name (e.g. massgis:GISDATA.STRUCTURES_POLY)" required>
+        <input type="number" name="opacity" placeholder="0.7" step="0.1" min="0" max="1" style="max-width:90px;">
+        <label style="display:inline-flex;align-items:center;gap:.35em;white-space:nowrap;">
+          <input type="checkbox" name="transparent" value="1" checked> Transparent
+        </label>
+        <button class="btn" type="submit">Add overlay</button>
+      </form>
+    </details>
   </section>
 
   <section class="card card-wide">
@@ -65,4 +77,8 @@
     <p class="hint">GeoJSON, KML, GPX, or a zipped Shapefile (WGS84). Imported shapes become
       map features — points → access points, lines → routes, polygons → custom. Up to 2000 per file.</p>
   </section>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/overlays.js') }}"></script>
 {% endblock %}

@@ -169,8 +169,23 @@ a:hover { text-decoration: underline; }
 .fp-wrap { display: inline-block; max-width: 100%; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: .5rem; margin-top: .5rem; }
 .fp-wrap img { max-width: 100%; height: auto; display: block; }
 
+/* WMS layer picker */
+.subhead { margin: 1.3rem 0 .2rem; font-size: 1.02rem; }
+.hint.error { color: var(--danger); }
+.wms-list { max-height: 20rem; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius); margin-top: .6rem; background: #fff; }
+.wms-item { display: flex; align-items: baseline; gap: .55rem; padding: .4rem .7rem; border-bottom: 1px solid var(--line); cursor: pointer; margin: 0; }
+.wms-item:last-child { border-bottom: 0; }
+.wms-item:hover { background: var(--bg); }
+.wms-item input { margin: 0; flex: 0 0 auto; align-self: center; }
+.wms-item-title { flex: 0 1 auto; }
+.wms-item-name { color: var(--muted); font-size: .78rem; margin-left: auto; white-space: nowrap; padding-left: .5rem; }
+.wms-manual { margin-top: 1rem; }
+.wms-manual summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
+#wms-selected-count { align-self: center; }
+
 @media (max-width: 620px) {
   .row { flex-direction: column; gap: .1rem; }
   .row dt { flex-basis: auto; }
   .nav a:not(.btn) { padding: .4rem .5rem; }
+  .wms-item-name { display: none; }
 }

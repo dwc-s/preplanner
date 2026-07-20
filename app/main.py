@@ -427,6 +427,42 @@ def overlay_add():
     return redirect(url_for("main.overlays"))
 
 
+@main_bp.post("/overlays/add-bulk")
+@admin_required
+def overlay_add_bulk():
+    """Add several WMS overlays at once from the layer picker (JSON POST).
+
+    The browser reads the WMS server's GetCapabilities directly (client-side, so
+    the app itself makes no outbound call — this keeps it runnable on hosts that
+    restrict server-side networking). It posts the chosen layers here; each layer
+    becomes its own toggleable overlay so crews can turn them on independently.
+    """
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").strip()
+    layers = data.get("layers")
+    if not url or not isinstance(layers, list) or not layers:
+        return jsonify(error="A WMS URL and at least one layer are required."), 400
+
+    existing = {(w.url, w.layers) for w in dept_query(WmsLayer).all()}
+    added = 0
+    for item in layers:
+        if not isinstance(item, dict):
+            continue
+        name = (item.get("name") or "").strip()
+        if not name or (url, name) in existing:
+            continue
+        title = (item.get("title") or name).strip() or name
+        db.session.add(WmsLayer(
+            department_id=current_user.department_id,
+            name=title[:120], url=url[:500], layers=name[:300],
+            image_format="image/png", transparent=True, opacity=0.7, enabled=True,
+        ))
+        existing.add((url, name))
+        added += 1
+    db.session.commit()
+    return jsonify(added=added)
+
+
 @main_bp.post("/overlays/<int:layer_id>/delete")
 @admin_required
 def overlay_delete(layer_id):
