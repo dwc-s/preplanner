@@ -18,6 +18,9 @@ instance/
 # Uploaded floor-plan images (kept out of version control)
 app/static/uploads/
 
+# Local GIS source data (large rasters/shapefiles, not for the repo)
+GIS Data/
+
 # OS / editor
 .DS_Store
 *.swp
