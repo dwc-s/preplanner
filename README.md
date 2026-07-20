@@ -51,7 +51,9 @@ occupancies/hydrants) — it prints a demo login.
 - **WMS overlays & GIS import** — add state/county WMS layers by pasting the
   server's URL and **picking from its layer list** — no need to know layer names;
   each choice becomes a toggleable map overlay. Also bulk-import **GeoJSON / KML /
-  GPX / zipped Shapefiles** (pure-Python, no system GDAL) as map features.
+  GPX / Shapefiles** — either a zipped shapefile or its **loose parts**
+  (`.shp` + `.dbf`/`.shx`/`.prj`), **auto-reprojected to WGS84** from the `.prj`
+  (pure-Python; no system GDAL) — as map features.
 - **Installable PWA with offline editing + sync** — a local-first store (Dexie /
   IndexedDB) backs the map and occupancy records, so crews can **view *and* edit**
   pre-plans with no signal (draw features, edit fields, add hazards/contacts).
@@ -174,8 +176,8 @@ Next, in rough order:
 2. **Field-level merge** — auto-merge non-overlapping field edits instead of
    whole-record keep-mine/keep-theirs.
 3. **Forgot-password email** flow (today an admin issues a temporary password).
-4. **Heavier GIS formats** — GeoTIFF/DXF and arbitrary-CRS reprojection via
-   optional GDAL/`ogr2ogr`; report/PDF export for training.
+4. **Heavier GIS formats** — GeoTIFF/DXF raster & CAD import (vector shapefile
+   CRS reprojection is done, via `pyproj`); report/PDF export for training.
 5. **Layer polish** — opacity, reorder, per-feature styling.
 6. **Dispatch / NERIS / NFPA 1620** alignment.
 

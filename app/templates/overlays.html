@@ -71,11 +71,15 @@
     <form method="post" action="{{ url_for('main.gis_import_upload') }}"
           enctype="multipart/form-data" class="inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="file" name="file" accept=".geojson,.json,.kml,.gpx,.zip" required>
+      <input type="file" name="files" multiple
+             accept=".geojson,.json,.kml,.gpx,.zip,.shp,.shx,.dbf,.prj,.cpg,.sbn,.sbx,.xml" required>
       <button class="btn" type="submit">Import</button>
     </form>
-    <p class="hint">GeoJSON, KML, GPX, or a zipped Shapefile (WGS84). Imported shapes become
-      map features — points → access points, lines → routes, polygons → custom. Up to 2000 per file.</p>
+    <p class="hint">GeoJSON, KML, GPX, a zipped Shapefile, or the loose Shapefile parts —
+      select the <code>.shp</code>, <code>.dbf</code> and <code>.shx</code> together, plus
+      <code>.prj</code> so it can be placed correctly (projected shapefiles are reprojected
+      to lat/lon automatically). Imported shapes become map features — points → access
+      points, lines → routes, polygons → custom. Up to 2000 features.</p>
   </section>
 {% endblock %}
 

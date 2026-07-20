@@ -477,6 +477,59 @@ def test_gis_import_rejects_bad_type(client):
     assert b"Unsupported file" in r.data
 
 
+def _make_shapefile(points, prj=None):
+    """Build a point Shapefile in memory. points = [(x, y, name)].
+    Returns {ext: bytes} for shp/shx/dbf (+ prj if given)."""
+    import shapefile  # pyshp
+    shp, shx, dbf = io.BytesIO(), io.BytesIO(), io.BytesIO()
+    w = shapefile.Writer(shp=shp, shx=shx, dbf=dbf)
+    w.field("name", "C", size=40)
+    for x, y, name in points:
+        w.point(x, y)
+        w.record(name)
+    w.close()
+    parts = {"shp": shp.getvalue(), "shx": shx.getvalue(), "dbf": dbf.getvalue()}
+    if prj:
+        parts["prj"] = prj.encode()
+    return parts
+
+
+def _upload_parts(client, parts, base="pts"):
+    files = [(io.BytesIO(raw), f"{base}.{ext}") for ext, raw in parts.items()]
+    return client.post("/overlays/import", data={"files": files},
+                       content_type="multipart/form-data", follow_redirects=True)
+
+
+def test_gis_import_shapefile_parts(client):
+    parts = _make_shapefile([(-72.5, 44.2, "Hydrant A"), (-72.4, 44.3, "Hydrant B")])
+    r = _upload_parts(client, parts)  # loose .shp/.shx/.dbf, already WGS84
+    assert b"Imported 2" in r.data
+    feats = client.get("/api/map-features").get_json()["features"]
+    assert len(feats) == 2
+    assert sorted(round(f["geometry"]["coordinates"][0], 1) for f in feats) == [-72.5, -72.4]
+
+
+def test_gis_import_shapefile_parts_needs_shp(client):
+    parts = _make_shapefile([(-72.5, 44.2, "X")])
+    del parts["shp"]  # only .shx/.dbf — nothing to read
+    r = _upload_parts(client, parts)
+    assert b"No importable features" in r.data
+    assert client.get("/api/map-features").get_json()["features"] == []
+
+
+def test_gis_import_shapefile_reprojected(client):
+    pytest.importorskip("pyproj")
+    from pyproj import CRS, Transformer
+    prj = CRS.from_epsg(3857).to_wkt("WKT1_ESRI")   # a real .prj is WKT1
+    fwd = Transformer.from_crs(4326, 3857, always_xy=True)
+    x, y = fwd.transform(-72.5, 44.2)               # project a known lon/lat
+    parts = _make_shapefile([(x, y, "Projected")], prj=prj)
+    r = _upload_parts(client, parts, base="proj")
+    assert b"Imported 1" in r.data
+    lon, lat = client.get("/api/map-features").get_json()["features"][0]["geometry"]["coordinates"][:2]
+    assert abs(lon - (-72.5)) < 1e-6 and abs(lat - 44.2) < 1e-6
+
+
 def test_gis_import_parsers():
     from app import gis_import
     kml = (b'<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2">'

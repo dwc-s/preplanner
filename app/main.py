@@ -27,7 +27,10 @@ from .auth import admin_required
 from . import gis_import
 
 ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "webp", "gif"}
-ALLOWED_GIS_EXT = {"geojson", "json", "kml", "gpx", "zip", "shp"}
+# Standalone GIS files (one file = one dataset) vs. loose Shapefile component
+# files (many files = one dataset, grouped by basename).
+STANDALONE_GIS_EXTS = {"geojson", "json", "kml", "gpx", "zip"}
+SHAPEFILE_PART_EXTS = {"shp", "shx", "dbf", "prj", "cpg", "sbn", "sbx", "xml"}
 
 main_bp = Blueprint("main", __name__)
 
@@ -476,19 +479,48 @@ def overlay_delete(layer_id):
 @main_bp.post("/overlays/import")
 @admin_required
 def gis_import_upload():
-    file = request.files.get("file")
-    if not file or not file.filename:
+    uploads = [f for f in request.files.getlist("files") if f and f.filename]
+    if not uploads:  # backward-compat with the old single-file field name
+        one = request.files.get("file")
+        if one and one.filename:
+            uploads = [one]
+    if not uploads:
         flash("Choose a file to import.", "error")
         return redirect(url_for("main.overlays"))
-    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
-    if ext not in ALLOWED_GIS_EXT:
-        flash("Unsupported file. Use GeoJSON, KML, GPX, or a zipped Shapefile.", "error")
+
+    # Split loose Shapefile parts (grouped by basename so several shapefiles can
+    # be uploaded at once) from standalone GeoJSON/KML/GPX/zip files.
+    shp_groups = {}   # basename -> {ext: bytes}
+    standalone = []   # (filename, bytes)
+    bad = []
+    for f in uploads:
+        base, _, ext = f.filename.rpartition(".")
+        ext = ext.lower()
+        if ext in SHAPEFILE_PART_EXTS:
+            shp_groups.setdefault(base.lower(), {})[ext] = f.read()
+        elif ext in STANDALONE_GIS_EXTS:
+            standalone.append((f.filename, f.read()))
+        else:
+            bad.append(f.filename)
+    if bad:
+        flash("Unsupported file(s): " + ", ".join(bad) + ". Use GeoJSON, KML, GPX, a "
+              "zipped Shapefile, or loose Shapefile parts (.shp with .dbf/.shx/.prj).",
+              "error")
         return redirect(url_for("main.overlays"))
-    try:
-        features = gis_import.parse_upload(file.filename, file.read())
-    except Exception as exc:
-        flash(f"Could not parse file: {exc}", "error")
-        return redirect(url_for("main.overlays"))
+
+    features, errors = [], []
+    for base, parts in shp_groups.items():
+        if "shp" not in parts:
+            continue  # e.g. a stray .prj/.xml with no geometry — ignore quietly
+        try:
+            features += gis_import.parse_shapefile_parts(parts)
+        except Exception as exc:
+            errors.append(f"{base}.shp: {exc}")
+    for name, raw in standalone:
+        try:
+            features += gis_import.parse_upload(name, raw)
+        except Exception as exc:
+            errors.append(f"{name}: {exc}")
 
     features = features[:MAX_IMPORT_FEATURES]
     for feat in features:
@@ -503,8 +535,15 @@ def gis_import_upload():
             created_by=current_user.id,
         ))
     db.session.commit()
-    if features:
-        flash(f"Imported {len(features)} feature(s) — see them on the map.", "success")
+
+    n = len(features)
+    if n and errors:
+        flash(f"Imported {n} feature(s); some files couldn't be read: " + "; ".join(errors),
+              "success")
+    elif n:
+        flash(f"Imported {n} feature(s) — see them on the map.", "success")
+    elif errors:
+        flash("Could not import: " + "; ".join(errors), "error")
     else:
-        flash("No importable features found in that file.", "error")
+        flash("No importable features found.", "error")
     return redirect(url_for("main.overlays"))
