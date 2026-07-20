@@ -33,13 +33,25 @@
 
     <form method="post" action="{{ url_for('main.overlay_add') }}" class="inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="name" placeholder="Display name" required>
+      <input type="text" name="name" placeholder="Display name (e.g. MassGIS Parcels)" required>
       <input type="url" name="url" placeholder="WMS base URL (https://…)" required>
-      <input type="text" name="layers" placeholder="layer,names" required>
+      <input type="text" name="layers" placeholder="WMS layer name (e.g. massgis:GISDATA.STRUCTURES_POLY)" required>
       <input type="number" name="opacity" placeholder="0.7" step="0.1" min="0" max="1" style="max-width:90px;">
+      <label style="display:inline-flex;align-items:center;gap:.35em;white-space:nowrap;">
+        <input type="checkbox" name="transparent" value="1" checked> Transparent
+      </label>
       <button class="btn" type="submit">Add overlay</button>
     </form>
-    <p class="hint">Point at a state/county GIS WMS endpoint (parcels, deeds…). Enabled overlays become toggleable layers on the map.</p>
+    <p class="hint">
+      <strong>Layers</strong> must be the server’s WMS <em>layer name</em> (from its
+      GetCapabilities), <em>not</em> the display name. For MassGIS
+      (<code>https://gis-prod.digital.mass.gov/geoserver/wms</code>) useful names are
+      <code>massgis:GISDATA.L3_TAXPAR_POLY_ASSESS</code> (parcels),
+      <code>massgis:GISDATA.STRUCTURES_POLY</code> (building footprints), and
+      <code>massgis:GISDATA.FIRESTATIONS_PT_MEMA</code> (fire stations).
+      Leave <strong>Transparent</strong> checked so the overlay doesn’t cover the basemap.
+      Enabled overlays become toggleable layers on the map.
+    </p>
   </section>
 
   <section class="card card-wide">
