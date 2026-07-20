@@ -37,8 +37,14 @@
     try { return JSON.parse(localStorage.getItem(VIEW_KEY) || "null"); } catch (e) { return null; }
   }
   var savedView = loadSavedView();
+  if (savedView && !(typeof savedView.lat === "number" && typeof savedView.lng === "number"
+      && typeof savedView.zoom === "number")) {
+    savedView = null;  // ignore a corrupt / partial saved view
+  }
 
-  var map = L.map("map").setView(
+  // maxZoom is fixed on the map so adding a tile overlay can't push the zoom
+  // range past the OSM base (which stops at 19).
+  var map = L.map("map", { maxZoom: 19 }).setView(
     savedView ? [savedView.lat, savedView.lng] : [44.2601, -72.5754],
     savedView ? savedView.zoom : 13);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -262,7 +268,7 @@
         if (w.kind === "xyz") {  // slippy-tile basemap (topo / imagery / hillshade)
           layer = L.tileLayer(w.url, {
             opacity: w.opacity != null ? w.opacity : 1,
-            maxNativeZoom: w.max_zoom || 19, maxZoom: 22,
+            maxNativeZoom: w.max_zoom || 19, maxZoom: 19,  // upscale to map max, no further
             attribution: w.attribution || ""
           });
           label = w.name;

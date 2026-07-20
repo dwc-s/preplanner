@@ -547,6 +547,21 @@ def test_gis_import_shapefile_parts_needs_shp(client):
     assert client.get("/api/map-features").get_json()["features"] == []
 
 
+def test_gis_import_shapefile_skips_bad_records(client):
+    import shapefile  # pyshp
+    shp, shx, dbf = io.BytesIO(), io.BytesIO(), io.BytesIO()
+    w = shapefile.Writer(shp=shp, shx=shx, dbf=dbf)
+    w.field("name", "C", size=40)
+    w.point(-72.5, 44.2); w.record("Good A")
+    w.null(); w.record("Null one")            # an empty/null record in the middle
+    w.point(-72.4, 44.3); w.record("Good B")
+    w.close()
+    parts = {"shp": shp.getvalue(), "shx": shx.getvalue(), "dbf": dbf.getvalue()}
+    _upload_parts(client, parts, base="mixed")
+    labels = [f["properties"]["label"] for f in client.get("/api/map-features").get_json()["features"]]
+    assert "Good A" in labels and "Good B" in labels  # the null didn't abort the import
+
+
 def test_gis_import_shapefile_reprojected(client):
     pytest.importorskip("pyproj")
     from pyproj import CRS, Transformer

@@ -603,6 +603,7 @@ def gis_import_upload():
         except Exception as exc:
             errors.append(f"{name}: {exc}")
 
+    total = len(features)
     features = features[:MAX_IMPORT_FEATURES]
     for feat in features:
         category = feat["category"]
@@ -619,7 +620,7 @@ def gis_import_upload():
 
     n = len(features)
     where = " within your map area" if clipped else ""
-    capped = " (capped at the first %d)" % MAX_IMPORT_FEATURES if n >= MAX_IMPORT_FEATURES else ""
+    capped = " (capped at %d of %d found)" % (n, total) if total > MAX_IMPORT_FEATURES else ""
     if n and errors:
         flash(f"Imported {n} feature(s){where}{capped}; some files couldn't be read: "
               + "; ".join(errors), "success")

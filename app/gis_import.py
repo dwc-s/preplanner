@@ -230,38 +230,40 @@ def _parse_shapefile(shp, dbf=None, shx=None, prj_text=None, bbox=None, limit=No
     # null / empty-geometry records that stricter pyshp versions raise on — skip
     # those rather than aborting the whole import.
     for i in range(len(reader)):
+        # Guard the whole per-record body: real-world shapefiles have null/broken
+        # records that raise anywhere from reading to reprojection — skip, don't abort.
         try:
             if has_dbf:
                 sr = reader.shapeRecord(i)
                 shape, record = sr.shape, sr.record
             else:
                 shape, record = reader.shape(i), None
+            sb = _shape_bbox(shape)
+            if sb is None:
+                continue  # record has no geometry
+            if clip_native and not _boxes_hit(sb, clip_native):
+                continue
+            geom = shape.__geo_interface__
+            if forward and geom.get("coordinates") is not None:
+                geom = {"type": geom["type"],
+                        "coordinates": _map_coords(geom["coordinates"], forward)}
+            if bbox:  # exact clip, now in WGS84
+                gb = _geom_bbox(geom.get("coordinates"))
+                if not gb or not _boxes_hit(gb, bbox):
+                    continue
+            label = None
+            if name_field and record is not None:
+                try:
+                    label = str(record[name_field])
+                except Exception:
+                    label = None
+            feat = _feature(geom, label)
+            if feat:
+                out.append(feat)
+                if limit and len(out) >= limit:
+                    break
         except Exception:
             continue
-        sb = _shape_bbox(shape)
-        if sb is None:
-            continue  # record has no geometry
-        if clip_native and not _boxes_hit(sb, clip_native):
-            continue
-        geom = shape.__geo_interface__
-        if forward and geom.get("coordinates") is not None:
-            geom = {"type": geom["type"],
-                    "coordinates": _map_coords(geom["coordinates"], forward)}
-        if bbox:  # exact clip, now in WGS84
-            gb = _geom_bbox(geom.get("coordinates"))
-            if not gb or not _boxes_hit(gb, bbox):
-                continue
-        label = None
-        if name_field and record is not None:
-            try:
-                label = str(record[name_field])
-            except Exception:
-                label = None
-        feat = _feature(geom, label)
-        if feat:
-            out.append(feat)
-            if limit and len(out) >= limit:
-                break
     return out
 
 
