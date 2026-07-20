@@ -79,7 +79,7 @@
       var contacts = r[1].filter(function (c) { return c.parent_uuid === occ.uuid; });
       childWrap.innerHTML =
         hazardsCard(hazards) + contactsCard(contacts) + floorplansCard(occ);
-      wireChildren(occ);
+      wireChildren(occ, hazards, contacts);
     });
   }
 
@@ -93,7 +93,8 @@
     var rows = hazards.length ? hazards.map(function (h) {
       return '<tr><td>' + esc(h.hazard_type) + '</td><td>' + esc(h.severity || "—") +
         '</td><td>' + esc(h.location || "—") + '</td><td>' + esc(h.description || "—") +
-        '</td><td><button class="btn btn-ghost btn-sm" data-del-hazard="' + h.uuid + '">✕</button></td></tr>';
+        '</td><td class="row-actions"><button class="btn btn-ghost btn-sm" data-edit-hazard="' + h.uuid + '">Edit</button>' +
+        '<button class="btn btn-ghost btn-sm" data-del-hazard="' + h.uuid + '">✕</button></td></tr>';
     }).join("") : '<tr><td colspan="5" class="subtle">No hazards recorded.</td></tr>';
     return '<section class="card card-wide"><h2>Hazards</h2>' +
       '<table class="table"><thead><tr><th>Type</th><th>Severity</th><th>Location</th><th>Description</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>' +
@@ -108,7 +109,8 @@
     var rows = contacts.length ? contacts.map(function (c) {
       return '<tr><td>' + esc(c.name) + '</td><td>' + esc(c.role || "—") + '</td><td>' +
         esc(c.phone || "—") + '</td><td>' + esc(c.email || "—") +
-        '</td><td><button class="btn btn-ghost btn-sm" data-del-contact="' + c.uuid + '">✕</button></td></tr>';
+        '</td><td class="row-actions"><button class="btn btn-ghost btn-sm" data-edit-contact="' + c.uuid + '">Edit</button>' +
+        '<button class="btn btn-ghost btn-sm" data-del-contact="' + c.uuid + '">✕</button></td></tr>';
     }).join("") : '<tr><td colspan="5" class="subtle">No contacts recorded.</td></tr>';
     return '<section class="card card-wide"><h2>Contacts</h2>' +
       '<table class="table"><thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Email</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>' +
@@ -128,7 +130,7 @@
       '<p class="hint">Available once this pre-plan has synced to the server.</p></section>';
   }
 
-  function wireChildren(occ) {
+  function wireChildren(occ, hazards, contacts) {
     var hzAdd = document.getElementById("hz-add");
     if (hzAdd) hzAdd.onclick = function () {
       var t = document.getElementById("hz-type").value;
@@ -146,6 +148,54 @@
     });
     childWrap.querySelectorAll("[data-del-contact]").forEach(function (b) {
       b.onclick = function () { if (confirm("Remove this contact?")) Store.remove("contact", b.getAttribute("data-del-contact")); };
+    });
+
+    // Inline edit: swap a row to inputs; Save writes to the store (which re-renders).
+    childWrap.querySelectorAll("[data-edit-hazard]").forEach(function (b) {
+      b.onclick = function () {
+        var h = (hazards || []).filter(function (x) { return x.uuid === b.getAttribute("data-edit-hazard"); })[0];
+        if (!h) return;
+        var tr = b.closest("tr");
+        tr.innerHTML =
+          '<td><select class="e-type">' + opt(vocab.hazard_types, h.hazard_type) + '</select></td>' +
+          '<td><select class="e-sev"><option value="">Severity…</option>' + opt(vocab.hazard_severities, h.severity) + '</select></td>' +
+          '<td><input class="e-loc" value="' + esc(h.location || "") + '"></td>' +
+          '<td><input class="e-desc" value="' + esc(h.description || "") + '"></td>' +
+          '<td class="row-actions"><button class="btn btn-sm e-save">Save</button>' +
+          '<button class="btn btn-ghost btn-sm e-cancel">Cancel</button></td>';
+        tr.querySelector(".e-save").onclick = function () {
+          var t = tr.querySelector(".e-type").value;
+          if (!t) { alert("Hazard type is required."); return; }
+          Store.update("hazard", h.uuid, { hazard_type: t,
+            severity: tr.querySelector(".e-sev").value || null,
+            location: tr.querySelector(".e-loc").value || null,
+            description: tr.querySelector(".e-desc").value || null });
+        };
+        tr.querySelector(".e-cancel").onclick = function () { renderChildren(occ); };
+      };
+    });
+    childWrap.querySelectorAll("[data-edit-contact]").forEach(function (b) {
+      b.onclick = function () {
+        var c = (contacts || []).filter(function (x) { return x.uuid === b.getAttribute("data-edit-contact"); })[0];
+        if (!c) return;
+        var tr = b.closest("tr");
+        tr.innerHTML =
+          '<td><input class="e-name" value="' + esc(c.name || "") + '"></td>' +
+          '<td><select class="e-role"><option value="">Role…</option>' + opt(vocab.contact_roles, c.role) + '</select></td>' +
+          '<td><input class="e-phone" value="' + esc(c.phone || "") + '"></td>' +
+          '<td><input class="e-email" value="' + esc(c.email || "") + '"></td>' +
+          '<td class="row-actions"><button class="btn btn-sm e-save">Save</button>' +
+          '<button class="btn btn-ghost btn-sm e-cancel">Cancel</button></td>';
+        tr.querySelector(".e-save").onclick = function () {
+          var n = tr.querySelector(".e-name").value;
+          if (!n) { alert("Contact name is required."); return; }
+          Store.update("contact", c.uuid, { name: n,
+            role: tr.querySelector(".e-role").value || null,
+            phone: tr.querySelector(".e-phone").value || null,
+            email: tr.querySelector(".e-email").value || null });
+        };
+        tr.querySelector(".e-cancel").onclick = function () { renderChildren(occ); };
+      };
     });
   }
 

@@ -753,3 +753,65 @@ def test_sync_department_scoping(app):
 ])
 def test_hydrant_flow_class(gpm, expected):
     assert Hydrant(latitude=0, longitude=0, flow_gpm=gpm).flow_class[0] == expected
+
+
+# --- map symbols, ranks & roster ---------------------------------------------
+
+def test_sync_map_feature_symbol_round_trips(client):
+    fu = str(uuid.uuid4())
+    r = _sync(client, [{"entity": "map_feature", "op": "create", "uuid": fu, "data": {
+        "category": "Symbol", "symbol": "fdc",
+        "geometry_json": '{"type":"Point","coordinates":[-72.5,44.2]}'}}])
+    assert len(r["applied"]) == 1
+    with client.application.app_context():
+        assert MapFeature.query.filter_by(uuid=fu).first().symbol == "fdc"
+    pulled = _sync(client, [])["changes"]["map_feature"]
+    assert any(f["symbol"] == "fdc" and f["category"] == "Symbol" for f in pulled)
+
+
+def test_user_create_with_rank(client):
+    client.post("/users", data={"email": "cap@example.com", "password": "longenough1",
+                                "role": "member", "rank": "Captain"})
+    with client.application.app_context():
+        assert User.query.filter_by(email="cap@example.com").first().rank == "Captain"
+    # an unknown rank is ignored (stored as null)
+    client.post("/users", data={"email": "bogus@example.com", "password": "longenough1",
+                                "rank": "Grand Poobah"})
+    with client.application.app_context():
+        assert User.query.filter_by(email="bogus@example.com").first().rank is None
+
+
+def test_user_set_rank(client):
+    with client.application.app_context():
+        uid = User.query.filter_by(email="a@example.com").first().id
+    client.post(f"/users/{uid}/rank", data={"rank": "Lieutenant"})
+    with client.application.app_context():
+        assert db.session.get(User, uid).rank == "Lieutenant"
+    client.post(f"/users/{uid}/rank", data={"rank": ""})  # clear
+    with client.application.app_context():
+        assert db.session.get(User, uid).rank is None
+
+
+def test_roster_visible_to_member_and_scoped(client, app):
+    # `client` is admin a@example.com in Dept A; add a named member to the same dept.
+    client.post("/users", data={"email": "member@example.com", "name": "Pat Member",
+                                "password": "longenough1", "role": "member"})
+    with app.app_context():                          # a member in another department
+        deptb = Department(name="Dept B")
+        db.session.add(deptb)
+        db.session.flush()
+        ub = User(email="b@example.com", name="Bravo Person", role="admin",
+                  department_id=deptb.id)
+        ub.set_password("pw")
+        db.session.add(ub)
+        db.session.commit()
+    c = app.test_client()
+    login(c, "member@example.com", "longenough1")    # a plain member, not an admin
+    r = c.get("/roster")
+    assert r.status_code == 200
+    assert b"Pat Member" in r.data                    # own department shown
+    assert b"Bravo Person" not in r.data              # other department not shown
+
+
+def test_roster_requires_login(app):
+    assert app.test_client().get("/roster").status_code in (302, 401)

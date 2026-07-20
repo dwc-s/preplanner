@@ -7,8 +7,29 @@
   "use strict";
 
   var FEATURE_COLORS = { "Access Point": "#1c7ed6", "Route": "#e8590c",
-    "Hazard Zone": "#e03131", "Custom": "#7048e8" };
-  var CATEGORIES = ["Access Point", "Route", "Hazard Zone", "Custom"];
+    "Hazard Zone": "#e03131", "Custom": "#7048e8", "Symbol": "#495057" };
+  var CATEGORIES = ["Access Point", "Route", "Hazard Zone", "Custom", "Symbol"];
+
+  // Placeable point symbols (mirror of app/models.py MAP_SYMBOLS).
+  var MAP_SYMBOLS = [
+    { key: "fdc", label: "Fire Dept Connection", code: "FDC", color: "#c0392b" },
+    { key: "knox", label: "Knox Box", code: "KNOX", color: "#1c7ed6" },
+    { key: "standpipe", label: "Standpipe", code: "STP", color: "#c0392b" },
+    { key: "sprinkler", label: "Sprinkler Riser", code: "SPR", color: "#c0392b" },
+    { key: "gas", label: "Gas Shutoff", code: "GAS", color: "#e8590c" },
+    { key: "electric", label: "Electric Shutoff", code: "ELEC", color: "#f59f00" },
+    { key: "water", label: "Water Shutoff", code: "H2O", color: "#1c7ed6" },
+    { key: "hazmat", label: "Hazmat", code: "HAZ", color: "#e03131" },
+    { key: "command", label: "Command Post", code: "CMD", color: "#2f9e44" },
+    { key: "staging", label: "Staging Area", code: "STG", color: "#7048e8" },
+    { key: "watersupply", label: "Water Supply / Draft", code: "DRAFT", color: "#1971c2" }
+  ];
+  var SYMBOLS_BY_KEY = {};
+  MAP_SYMBOLS.forEach(function (s) { SYMBOLS_BY_KEY[s.key] = s; });
+  function symbolIcon(sym) {
+    return L.divIcon({ className: "map-symbol-icon", iconSize: null, iconAnchor: [14, 14],
+      html: '<span class="map-symbol" style="background:' + sym.color + '">' + esc(sym.code) + "</span>" });
+  }
 
   function featureColor(cat) { return FEATURE_COLORS[cat] || "#7048e8"; }
   function hydrantClass(flow) {
@@ -26,6 +47,7 @@
   function groupForCategory(cat) {
     if (cat === "Access Point") return accessLayer;
     if (cat === "Route") return routeLayer;
+    if (cat === "Symbol") return symbolLayer;
     return zoneLayer;
   }
 
@@ -70,6 +92,7 @@
   var accessLayer = L.layerGroup().addTo(map);
   var routeLayer = L.layerGroup().addTo(map);
   var zoneLayer = L.layerGroup().addTo(map);
+  var symbolLayer = L.layerGroup().addTo(map);
 
   var rendered = {};  // map_feature uuid -> { layer, group, sig }
 
@@ -116,7 +139,7 @@
 
   // --- map features (large set: incremental diff by uuid) --------------------
   function sigOf(f) {
-    return [f.updated_at, f.geometry_json, f.label, f.category, f.color].join("|");
+    return [f.updated_at, f.geometry_json, f.label, f.category, f.color, f.symbol].join("|");
   }
 
   function renderFeatures(feats) {
@@ -139,7 +162,9 @@
     var color = f.color || featureColor(f.category);
     var layer;
     if (geom.type === "Point") {
-      layer = L.marker([geom.coordinates[1], geom.coordinates[0]]);
+      var sym = f.symbol && SYMBOLS_BY_KEY[f.symbol];
+      var ll = [geom.coordinates[1], geom.coordinates[0]];
+      layer = sym ? L.marker(ll, { icon: symbolIcon(sym) }) : L.marker(ll);
     } else {
       layer = L.geoJSON({ type: "Feature", geometry: geom },
         { style: { color: color, weight: 4, fillOpacity: 0.2 } }).getLayers()[0];
@@ -158,7 +183,7 @@
     Store.update("map_feature", f.uuid, { geometry_json: gj });
     // Keep our rendered signature current so the re-render doesn't rebuild (and
     // disrupt) the layer the user just edited in place.
-    if (rendered[f.uuid]) rendered[f.uuid].sig = [f.updated_at, gj, f.label, f.category, f.color].join("|");
+    if (rendered[f.uuid]) rendered[f.uuid].sig = [f.updated_at, gj, f.label, f.category, f.color, f.symbol].join("|");
   }
 
   function featurePopupHtml(f) {
@@ -224,6 +249,7 @@
       L.DomEvent.on(b, "click", function (ev) {
         L.DomEvent.preventDefault(ev); L.DomEvent.stopPropagation(ev);
         placingHydrant = !placingHydrant;
+        if (placingHydrant) { disarmSymbol(); stopMeasure(); }
         c.classList.toggle("active", placingHydrant);
         map.getContainer().style.cursor = placingHydrant ? "crosshair" : "";
       });
@@ -238,10 +264,113 @@
       longitude: +e.latlng.lng.toFixed(6), in_service: true });
   });
 
+  // --- symbol palette: place fire-service symbols as point features ----------
+  var pendingSymbol = null;
+  function disarmSymbol() {
+    pendingSymbol = null;
+    var p = document.querySelector(".map-symbol-palette");
+    if (p) p.querySelectorAll(".map-symbol-btn.active").forEach(function (b) { b.classList.remove("active"); });
+    if (!placingHydrant && !measuring) map.getContainer().style.cursor = "";
+  }
+  var SymbolPalette = L.Control.extend({
+    options: { position: "topleft" },
+    onAdd: function () {
+      var wrap = L.DomUtil.create("div", "leaflet-bar map-symbol-palette");
+      var toggle = L.DomUtil.create("a", "", wrap);
+      toggle.href = "#"; toggle.title = "Place a symbol"; toggle.innerHTML = "&#9873;";
+      var panel = L.DomUtil.create("div", "map-symbol-panel", wrap);
+      panel.style.display = "none";
+      MAP_SYMBOLS.forEach(function (s) {
+        var btn = L.DomUtil.create("button", "map-symbol-btn", panel);
+        btn.type = "button"; btn.setAttribute("data-key", s.key);
+        btn.innerHTML = '<span class="map-symbol" style="background:' + s.color + '">' + esc(s.code) +
+          "</span><span>" + esc(s.label) + "</span>";
+        L.DomEvent.on(btn, "click", function (ev) {
+          L.DomEvent.stop(ev);
+          var was = pendingSymbol === s.key;
+          disarmSymbol();
+          if (!was) {
+            pendingSymbol = s.key; placingHydrant = false; stopMeasure();
+            btn.classList.add("active");
+            map.getContainer().style.cursor = "crosshair";
+          }
+          panel.style.display = "none";
+        });
+      });
+      L.DomEvent.on(toggle, "click", function (ev) {
+        L.DomEvent.stop(ev);
+        panel.style.display = panel.style.display === "none" ? "block" : "none";
+      });
+      L.DomEvent.disableClickPropagation(wrap);
+      return wrap;
+    }
+  });
+  map.addControl(new SymbolPalette());
+  map.on("click", function (e) {
+    if (!pendingSymbol || measuring || map.pm.globalDrawModeEnabled()) return;
+    Store.create("map_feature", { category: "Symbol", symbol: pendingSymbol,
+      geometry_json: JSON.stringify({ type: "Point", coordinates: [+e.latlng.lng.toFixed(6), +e.latlng.lat.toFixed(6)] }) });
+    disarmSymbol();  // one symbol per click; pick again to place another
+  });
+
+  // --- ruler: measure ground distance (does not save anything) ---------------
+  var measuring = false, measurePts = [], measureLayer = L.layerGroup().addTo(map), measureCtl = null;
+  function fmtDist(m) {
+    var ft = m * 3.28084;
+    return ft >= 5280 ? (ft / 5280).toFixed(2) + " mi" : Math.round(ft) + " ft";
+  }
+  function stopMeasure() {
+    measuring = false;
+    map.doubleClickZoom.enable();
+    if (measureCtl) measureCtl.classList.remove("active");
+    if (!placingHydrant && !pendingSymbol) map.getContainer().style.cursor = "";
+  }
+  function clearMeasure() { measurePts = []; measureLayer.clearLayers(); }
+  function redrawMeasure() {
+    measureLayer.clearLayers();
+    if (measurePts.length) {
+      L.polyline(measurePts, { color: "#111", weight: 2, dashArray: "5,5" }).addTo(measureLayer);
+      var total = 0;
+      for (var i = 1; i < measurePts.length; i++) total += map.distance(measurePts[i - 1], measurePts[i]);
+      measurePts.forEach(function (p) {
+        L.circleMarker(p, { radius: 3, color: "#111", fillColor: "#fff", fillOpacity: 1, weight: 1 }).addTo(measureLayer);
+      });
+      var last = measurePts[measurePts.length - 1];
+      L.marker(last, { icon: L.divIcon({ className: "measure-label", iconAnchor: [-8, 8],
+        html: fmtDist(total) + (measurePts.length > 1 ? "" : " · click to add points") }) }).addTo(measureLayer);
+    }
+  }
+  var RulerControl = L.Control.extend({
+    options: { position: "topleft" },
+    onAdd: function () {
+      var c = L.DomUtil.create("div", "leaflet-bar ruler-control");
+      measureCtl = c;
+      var b = L.DomUtil.create("a", "", c);
+      b.href = "#"; b.title = "Measure distance: click this, then click points; double-click or Esc to finish"; b.innerHTML = "&#128207;";
+      L.DomEvent.on(b, "click", function (ev) {
+        L.DomEvent.preventDefault(ev); L.DomEvent.stopPropagation(ev);
+        if (measuring) { stopMeasure(); return; }
+        clearMeasure(); measuring = true; placingHydrant = false; disarmSymbol();
+        map.doubleClickZoom.disable();
+        c.classList.add("active"); map.getContainer().style.cursor = "crosshair";
+      });
+      return c;
+    }
+  });
+  map.addControl(new RulerControl());
+  map.on("click", function (e) {
+    if (!measuring || map.pm.globalDrawModeEnabled()) return;
+    measurePts.push(e.latlng); redrawMeasure();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (measuring) stopMeasure(); else if (pendingSymbol) disarmSymbol();
+  });
+
   // --- layer control + WMS overlays ------------------------------------------
   var layersControl = L.control.layers(null, {
     "Occupancies": occupancyLayer, "Footprints": footprintLayer, "Hydrants": hydrantLayer,
-    "Access points": accessLayer, "Routes": routeLayer, "Zones": zoneLayer
+    "Access points": accessLayer, "Routes": routeLayer, "Zones": zoneLayer, "Symbols": symbolLayer
   }, { collapsed: false }).addTo(map);
 
   // WMS config is admin/online-only; unavailable offline (fetch simply fails).

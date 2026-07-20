@@ -89,17 +89,50 @@ HAZARD_SEVERITIES = ["Low", "Medium", "High", "Critical"]
 
 USER_ROLES = ["admin", "member"]
 
+# Fire-service ranks, listed most-senior first (drives roster ordering).
+FIRE_RANKS = [
+    "Chief",
+    "Deputy Chief",
+    "Assistant Chief",
+    "Captain",
+    "Lieutenant",
+    "Firefighter/Paramedic",
+    "Firefighter/EMT",
+    "Firefighter",
+    "Probationary Firefighter",
+]
+
 # Drawn map features. Category drives styling and the map layer it lives in.
-MAP_FEATURE_CATEGORIES = ["Access Point", "Route", "Hazard Zone", "Custom"]
+# "Symbol" holds placeable fire-service symbols (see MAP_SYMBOLS).
+MAP_FEATURE_CATEGORIES = ["Access Point", "Route", "Hazard Zone", "Custom", "Symbol"]
 
 FEATURE_COLORS = {
     "Access Point": "#1c7ed6",  # blue
     "Route": "#e8590c",         # orange
     "Hazard Zone": "#e03131",   # red
     "Custom": "#7048e8",        # purple
+    "Symbol": "#495057",        # slate (symbols carry their own badge colour)
 }
 
 DEFAULT_FEATURE_COLOR = "#7048e8"
+
+# Placeable point symbols for the pre-plan map. Each Point MapFeature with
+# category "Symbol" stores one of these keys in `symbol`; the client renders it
+# as a coloured badge (`code`). Editing this list is the only place symbols live.
+MAP_SYMBOLS = [
+    {"key": "fdc", "label": "Fire Dept Connection", "code": "FDC", "color": "#c0392b"},
+    {"key": "knox", "label": "Knox Box", "code": "KNOX", "color": "#1c7ed6"},
+    {"key": "standpipe", "label": "Standpipe", "code": "STP", "color": "#c0392b"},
+    {"key": "sprinkler", "label": "Sprinkler Riser", "code": "SPR", "color": "#c0392b"},
+    {"key": "gas", "label": "Gas Shutoff", "code": "GAS", "color": "#e8590c"},
+    {"key": "electric", "label": "Electric Shutoff", "code": "ELEC", "color": "#f59f00"},
+    {"key": "water", "label": "Water Shutoff", "code": "H2O", "color": "#1c7ed6"},
+    {"key": "hazmat", "label": "Hazmat", "code": "HAZ", "color": "#e03131"},
+    {"key": "command", "label": "Command Post", "code": "CMD", "color": "#2f9e44"},
+    {"key": "staging", "label": "Staging Area", "code": "STG", "color": "#7048e8"},
+    {"key": "watersupply", "label": "Water Supply / Draft", "code": "DRAFT", "color": "#1971c2"},
+]
+MAP_SYMBOL_KEYS = {s["key"] for s in MAP_SYMBOLS}
 
 
 # --- Tenancy: departments & users --------------------------------------------
@@ -128,6 +161,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     name = db.Column(db.String(200))
     role = db.Column(db.String(20), nullable=False, default="member")
+    rank = db.Column(db.String(40))  # fire-service rank (see FIRE_RANKS)
     department_id = db.Column(
         db.Integer, db.ForeignKey("department.id"), nullable=False
     )
@@ -418,6 +452,7 @@ class MapFeature(db.Model):
     # Optional link to a building this feature belongs to.
     occupancy_id = db.Column(db.Integer, db.ForeignKey("occupancy.id"))
     category = db.Column(db.String(40), nullable=False)
+    symbol = db.Column(db.String(40))  # for category "Symbol" (see MAP_SYMBOLS)
     label = db.Column(db.String(200))
     geometry_json = db.Column(db.Text, nullable=False)  # GeoJSON geometry
     color = db.Column(db.String(20))
@@ -447,6 +482,7 @@ class MapFeature(db.Model):
             "properties": {
                 "id": self.id,
                 "category": self.category,
+                "symbol": self.symbol,
                 "label": self.label,
                 "color": self.display_color,
                 "notes": self.notes,

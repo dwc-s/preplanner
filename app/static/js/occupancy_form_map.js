@@ -45,6 +45,10 @@
     // Don't hijack clicks while drawing/editing/removing the footprint.
     if (map.pm.globalDrawModeEnabled() || map.pm.globalEditModeEnabled() ||
         map.pm.globalRemovalModeEnabled()) return;
+    // Clicking a hydrant marker should read it, not move the building point.
+    var t = e.originalEvent && e.originalEvent.target;
+    var cls = t && t.getAttribute && t.getAttribute("class");
+    if (cls && /hydrant-marker/.test(cls)) return;
     placeMarker(e.latlng);
   });
 
@@ -89,6 +93,34 @@
   map.on("pm:remove", function (e) {
     if (e.layer === footprintLayer) { footprintLayer = null; serialize(); }
   });
+
+  // --- water supply: all department hydrants (toggleable, on by default) ------
+  function hydrantColor(flow) {
+    if (flow == null) return "#adb5bd";
+    if (flow >= 1500) return "#4dabf7";  // NFPA 291 flow classes
+    if (flow >= 1000) return "#40c057";
+    if (flow >= 500) return "#ff922b";
+    return "#fa5252";
+  }
+  var hydrantLayer = L.layerGroup().addTo(map);
+  L.control.layers(null, { "Hydrants": hydrantLayer }, { position: "topright" }).addTo(map);
+  if (window.Store) {
+    Store.ready.then(function () { return Store.list("hydrant"); }).then(function (hyds) {
+      (hyds || []).forEach(function (h) {
+        if (h.latitude == null || h.longitude == null) return;
+        var m = L.circleMarker([h.latitude, h.longitude], {
+          radius: 5, color: "#333", weight: 1, className: "hydrant-marker",
+          fillColor: hydrantColor(h.flow_gpm), fillOpacity: h.in_service === false ? 0.25 : 0.9
+        });
+        var body = L.DomUtil.create("div");
+        body.textContent = (h.label || "Hydrant") +
+          (h.flow_gpm != null ? " · " + h.flow_gpm + " GPM" : "") +
+          (h.in_service === false ? " · OUT OF SERVICE" : "");
+        m.bindPopup(body);
+        m.addTo(hydrantLayer);
+      });
+    });
+  }
 
   // The map starts inside a long form; recompute size once laid out.
   setTimeout(function () { map.invalidateSize(); }, 200);

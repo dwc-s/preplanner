@@ -31,23 +31,28 @@ occupancies/hydrants) — it prints a demo login.
 
 ## What works today
 
-- **Accounts & multi-tenancy** — session login (Flask-Login), department-scoped
+- **Accounts, ranks & roster** — session login (Flask-Login), department-scoped
   data, admin-managed users. **No public sign-up**: admins add crew; new
-  departments are created with `flask create-admin`. Every route is behind login
-  and every query is scoped to the user's department. Login is **rate-limited**
+  departments are created with `flask create-admin`. Assign **fire-service ranks**
+  (Chief → Probationary Firefighter) on the Users page; every member can view the
+  **Roster** (name + rank, by seniority). Every route is behind login and every
+  query is scoped to the user's department. Login is **rate-limited**
   (Flask-Limiter); users can **change their own password** and admins can issue a
   **temporary password reset**.
 - **Occupancy pre-plans** — create, edit, search, delete. Construction type,
   condition, fire-protection systems, Knox Box, gate/alarm codes, annunciator,
-  utility shutoffs, water supply, hazards, contacts, and notes.
+  utility shutoffs, water supply, notes, plus **inline-editable hazards and
+  contacts**. The editor's map shows nearby **hydrants** (toggleable).
 - **Floor plans** — upload images and annotate them (rectangles/polygons for
   hazards, shutoffs, Knox Box…) with [Annotorious](https://annotorious.dev).
   Images are served only through an authenticated, ownership-checked route.
 - **Interactive map** — occupancies, footprints, hydrants, access points,
   routes and custom zones as toggleable layers. Draw features with
-  [Leaflet-Geoman](https://geoman.io); click to place hydrants; draw a building
-  footprint and set its point right on the pre-plan form. The map reopens where
-  you last left it (which also becomes the default GIS-import clip area).
+  [Leaflet-Geoman](https://geoman.io); place **fire-service symbols** (FDC, Knox,
+  shutoffs, hazmat, command post…) from a palette; **measure distances** with the
+  ruler; click to place hydrants; draw a building footprint and set its point
+  right on the pre-plan form. The map reopens where you last left it (which also
+  becomes the default GIS-import clip area).
 - **Hydrants** — add/list/delete, NFPA 291 flow-class colour coding.
 - **Basemaps & overlays** — one-click **tiled basemaps** (USGS topo, aerial
   imagery, terrain hillshade, OpenTopoMap) sit under your pre-plans — a light way

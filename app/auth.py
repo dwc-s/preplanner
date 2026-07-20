@@ -16,7 +16,7 @@ from flask_login import (
 )
 
 from .extensions import db, limiter
-from .models import User, USER_ROLES
+from .models import User, USER_ROLES, FIRE_RANKS
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -84,9 +84,12 @@ def user_create():
     email = (request.form.get("email") or "").strip().lower()
     name = (request.form.get("name") or "").strip()
     role = request.form.get("role") or "member"
+    rank = (request.form.get("rank") or "").strip()
     password = request.form.get("password") or ""
     if role not in USER_ROLES:
         role = "member"
+    if rank not in FIRE_RANKS:
+        rank = None
 
     if not email or not password:
         flash("Email and password are required.", "error")
@@ -95,7 +98,7 @@ def user_create():
     elif User.query.filter_by(email=email).first():
         flash("A user with that email already exists.", "error")
     else:
-        user = User(email=email, name=name, role=role,
+        user = User(email=email, name=name, role=role, rank=rank,
                     department_id=current_user.department_id)
         user.set_password(password)
         db.session.add(user)
@@ -134,6 +137,34 @@ def user_reset_password(user_id):
     flash(f"Temporary password for {user.email}: {temp} — share it securely; "
           f"they should change it after signing in.", "success")
     return redirect(url_for("auth.users_list"))
+
+
+@auth_bp.post("/users/<int:user_id>/rank")
+@admin_required
+def user_set_rank(user_id):
+    """Set a crew member's fire-service rank."""
+    user = (User.query
+            .filter_by(id=user_id, department_id=current_user.department_id)
+            .first_or_404())
+    rank = (request.form.get("rank") or "").strip()
+    user.rank = rank if rank in FIRE_RANKS else None
+    db.session.commit()
+    flash(f"Updated rank for {user.email}.", "success")
+    return redirect(url_for("auth.users_list"))
+
+
+# --- department roster (visible to every signed-in member) -------------------
+
+@auth_bp.get("/roster")
+@login_required
+def roster():
+    members = (User.query
+               .filter_by(department_id=current_user.department_id, is_active=True)
+               .all())
+    order = {r: i for i, r in enumerate(FIRE_RANKS)}
+    members.sort(key=lambda u: (order.get(u.rank, len(FIRE_RANKS)),
+                                (u.name or u.email).lower()))
+    return render_template("roster.html", members=members)
 
 
 # --- self-service ------------------------------------------------------------

@@ -17,6 +17,13 @@ Pre-Planner has not yet cut a numbered release — everything below is on the
 - Interactive Leaflet map — occupancies, footprints, hydrants, access points,
   routes, and custom zones as toggleable layers. Draw with Leaflet-Geoman, click
   to place hydrants (NFPA 291 flow-class colours), draw a footprint on the form.
+- Map annotation tools — a **placeable fire-service symbol palette** (FDC, Knox
+  box, standpipe, gas/electric/water shutoffs, hazmat, command post, staging…)
+  whose symbols save as map features, and a **distance ruler** (measures in feet /
+  miles).
+- Hazards & contacts on a pre-plan are **editable inline** (not just add/delete),
+  and the occupancy editor shows the department's **hydrants** on its map
+  (toggleable), so water supply is visible while planning a building.
 - Floor plans — upload images and annotate them (rectangles/polygons) with
   Annotorious; images served only through an authenticated, ownership-checked
   route.
@@ -24,6 +31,9 @@ Pre-Planner has not yet cut a numbered release — everything below is on the
 **Accounts & security**
 - Session login (Flask-Login) with per-department multi-tenancy enforced through
   a single scoping chokepoint; admin-managed users; no public sign-up.
+- **Ranks & roster** — assign fire-service ranks (Chief → Probationary
+  Firefighter) on the Users page; a member-facing **Roster** lists the department
+  by name and rank, ordered by seniority.
 - Login rate-limiting, self-service password change, admin temporary-password
   reset, and CSRF protection on every write.
 

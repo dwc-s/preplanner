@@ -8,13 +8,24 @@
 
   <table class="table">
     <thead>
-      <tr><th>Email</th><th>Name</th><th>Role</th><th>Status</th><th></th></tr>
+      <tr><th>Email</th><th>Name</th><th>Rank</th><th>Role</th><th>Status</th><th></th></tr>
     </thead>
     <tbody>
       {% for u in users %}
         <tr>
           <td>{{ u.email }}</td>
           <td>{{ u.name or "—" }}</td>
+          <td>
+            <form method="post" action="{{ url_for('auth.user_set_rank', user_id=u.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="rank" onchange="this.form.submit()">
+                <option value="">—</option>
+                {% for r in FIRE_RANKS %}
+                  <option value="{{ r }}" {% if u.rank == r %}selected{% endif %}>{{ r }}</option>
+                {% endfor %}
+              </select>
+            </form>
+          </td>
           <td>{{ u.role }}</td>
           <td>{% if u.is_active %}Active{% else %}<span class="sev sev-high">Inactive</span>{% endif %}</td>
           <td>
@@ -48,6 +59,10 @@
       <select name="role">
         <option value="member">member</option>
         <option value="admin">admin</option>
+      </select>
+      <select name="rank">
+        <option value="">Rank…</option>
+        {% for r in FIRE_RANKS %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
       </select>
       <input type="password" name="password" placeholder="Temporary password" required>
       <button class="btn" type="submit">Add user</button>
