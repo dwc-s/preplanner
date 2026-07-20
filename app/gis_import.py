@@ -154,58 +154,118 @@ def _map_coords(coords, fn):
     return [_map_coords(c, fn) for c in coords]
 
 
-def _reproject_features(features, prj_text):
-    """Reproject geometries to WGS84 lon/lat using the shapefile's .prj.
+def _is_projected(prj_text):
+    """A projected CRS uses PROJCS in WKT1 (.prj files) or PROJCRS in WKT2."""
+    t = (prj_text or "").upper()
+    return "PROJCS" in t or "PROJCRS" in t
 
-    No .prj, or a geographic (lon/lat) one, is treated as already WGS84 (NAD83
-    geographic differs by ~1 m — fine for pre-planning). A *projected* .prj
-    (``PROJCS``, e.g. State Plane in metres) must be converted, which needs the
-    optional ``pyproj`` package.
+
+def _shape_bbox(shape):
+    """Native-coordinate bounding box (xmin, ymin, xmax, ymax) of a pyshp shape;
+    works for points too (pyshp gives no .bbox for single points)."""
+    pts = getattr(shape, "points", None)
+    if pts:
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        return (min(xs), min(ys), max(xs), max(ys))
+    bb = getattr(shape, "bbox", None)
+    return tuple(bb) if bb else None
+
+
+def _boxes_hit(a, b):
+    """Do axis-aligned boxes (xmin, ymin, xmax, ymax) intersect?"""
+    return not (a[2] < b[0] or a[0] > b[2] or a[3] < b[1] or a[1] > b[3])
+
+
+def _parse_shapefile(shp, dbf=None, shx=None, prj_text=None, bbox=None, limit=None):
+    """Parse a shapefile (streaming, so huge statewide files don't blow up memory).
+
+    Reprojects to WGS84 from the ``.prj`` (projected CRS needs pyproj; geographic
+    or absent is treated as already lon/lat). ``bbox`` is
+    ``(min_lon, min_lat, max_lon, max_lat)`` in WGS84 — when given, only features
+    whose bounding box intersects it are kept (the box is projected back into the
+    file's own CRS so the cheap filter runs before any per-feature reprojection).
+    ``limit`` caps how many features are returned.
     """
-    txt = (prj_text or "").upper()
-    # Projected CRS keyword is PROJCS in WKT1 (.prj files) and PROJCRS in WKT2.
-    if not prj_text or ("PROJCS" not in txt and "PROJCRS" not in txt):
-        return features
-    try:
-        from pyproj import CRS, Transformer
-    except ImportError:
-        raise ValueError(
-            "This shapefile uses a projected coordinate system (its .prj), which "
-            "needs the 'pyproj' package to convert to latitude/longitude. Install it "
-            "(pip install pyproj) or reproject the data to WGS84 (EPSG:4326) first.")
-    transformer = Transformer.from_crs(CRS.from_wkt(prj_text), "EPSG:4326", always_xy=True)
-    for f in features:
-        geom = f["geometry"]
-        if "coordinates" in geom:
-            geom["coordinates"] = _map_coords(geom["coordinates"], transformer.transform)
-    return features
-
-
-def _parse_shapefile(shp, dbf=None, shx=None, prj_text=None):
     import shapefile  # pyshp
 
     reader = shapefile.Reader(shp=shp, dbf=dbf, shx=shx)
     fields = [f[0] for f in reader.fields[1:]]
-    name_field = next((f for f in fields if f.lower() in ("name", "label", "title")), None)
+    # Prefer an exact name/label/title field; else a "*name*" field (e.g.
+    # TRAIL_NAME), skipping ALT_NAME-style alternates, so features carry a label.
+    name_field = (next((f for f in fields if f.lower() in ("name", "label", "title")), None)
+                  or next((f for f in fields if "name" in f.lower()
+                           and not f.lower().startswith("alt")), None)
+                  or next((f for f in fields if "name" in f.lower()), None))
+
+    forward = None       # source CRS -> WGS84 (None => already lon/lat)
+    clip_native = None   # bbox expressed in the file's own coordinates
+    if _is_projected(prj_text):
+        try:
+            from pyproj import CRS, Transformer
+        except ImportError:
+            raise ValueError(
+                "This shapefile uses a projected coordinate system (.prj), which needs "
+                "the 'pyproj' package to convert to latitude/longitude. Install it "
+                "(pip install pyproj) or reproject the data to WGS84 first.")
+        src = CRS.from_wkt(prj_text)
+        forward = Transformer.from_crs(src, "EPSG:4326", always_xy=True).transform
+        if bbox:
+            inv = Transformer.from_crs("EPSG:4326", src, always_xy=True).transform
+            corners = [inv(x, y) for x in (bbox[0], bbox[2]) for y in (bbox[1], bbox[3])]
+            xs = [c[0] for c in corners]
+            ys = [c[1] for c in corners]
+            # Pad 5%: a lat/lon box projects to a slightly curved quad, so the
+            # corner-based native box can under-cover the edges. Pad generously
+            # here (the exact WGS84 check below trims to the real area).
+            px = (max(xs) - min(xs)) * 0.05 or 1.0
+            py = (max(ys) - min(ys)) * 0.05 or 1.0
+            clip_native = (min(xs) - px, min(ys) - py, max(xs) + px, max(ys) + py)
+    elif bbox:
+        clip_native = bbox  # source is already lon/lat
 
     out = []
-    records = reader.shapeRecords() if dbf else [
-        type("R", (), {"shape": s, "record": None})() for s in reader.shapes()]
-    for sr in records:
-        geom = sr.shape.__geo_interface__
+    has_dbf = dbf is not None
+    # Read by index with per-record error handling: real-world shapefiles contain
+    # null / empty-geometry records that stricter pyshp versions raise on — skip
+    # those rather than aborting the whole import.
+    for i in range(len(reader)):
+        try:
+            if has_dbf:
+                sr = reader.shapeRecord(i)
+                shape, record = sr.shape, sr.record
+            else:
+                shape, record = reader.shape(i), None
+        except Exception:
+            continue
+        sb = _shape_bbox(shape)
+        if sb is None:
+            continue  # record has no geometry
+        if clip_native and not _boxes_hit(sb, clip_native):
+            continue
+        geom = shape.__geo_interface__
+        if forward and geom.get("coordinates") is not None:
+            geom = {"type": geom["type"],
+                    "coordinates": _map_coords(geom["coordinates"], forward)}
+        if bbox:  # exact clip, now in WGS84
+            gb = _geom_bbox(geom.get("coordinates"))
+            if not gb or not _boxes_hit(gb, bbox):
+                continue
         label = None
-        if name_field and sr.record is not None:
+        if name_field and record is not None:
             try:
-                label = str(sr.record[name_field])
+                label = str(record[name_field])
             except Exception:
                 label = None
         feat = _feature(geom, label)
         if feat:
             out.append(feat)
-    return _reproject_features(out, prj_text)
+            if limit and len(out) >= limit:
+                break
+    return out
 
 
-def parse_shapefile_zip(raw):
+def parse_shapefile_zip(raw, bbox=None, limit=None):
     zf = zipfile.ZipFile(io.BytesIO(raw))
     names = zf.namelist()
     shp_name = next((n for n in names if n.lower().endswith(".shp")), None)
@@ -221,16 +281,18 @@ def parse_shapefile_zip(raw):
     return _parse_shapefile(
         io.BytesIO(shp), dbf=io.BytesIO(dbf) if dbf else None,
         shx=io.BytesIO(shx) if shx else None,
-        prj_text=prj.decode("utf-8", "replace") if prj else None)
+        prj_text=prj.decode("utf-8", "replace") if prj else None,
+        bbox=bbox, limit=limit)
 
 
-def parse_shapefile_parts(parts):
+def parse_shapefile_parts(parts, bbox=None, limit=None):
     """Parse a Shapefile from loose component files.
 
     ``parts`` maps a lowercase extension without the dot ('shp', 'dbf', 'shx',
     'prj', …) to raw bytes. Only ``.shp`` is strictly required, but ``.dbf`` adds
     attribute labels, ``.shx`` the index, and ``.prj`` drives reprojection to
-    WGS84. Other sidecars (.sbn/.sbx/.cpg/.xml) are ignored.
+    WGS84. Other sidecars (.sbn/.sbx/.cpg/.xml) are ignored. ``bbox``/``limit`` are
+    passed through to clip and cap the import.
     """
     if "shp" not in parts:
         raise ValueError("A shapefile needs at least the .shp file "
@@ -240,19 +302,52 @@ def parse_shapefile_parts(parts):
         return io.BytesIO(parts[ext]) if ext in parts else None
 
     prj_text = parts["prj"].decode("utf-8", "replace") if "prj" in parts else None
-    return _parse_shapefile(buf("shp"), dbf=buf("dbf"), shx=buf("shx"), prj_text=prj_text)
+    return _parse_shapefile(buf("shp"), dbf=buf("dbf"), shx=buf("shx"),
+                            prj_text=prj_text, bbox=bbox, limit=limit)
+
+
+# --- bbox clipping for already-parsed (WGS84) features -----------------------
+
+def _geom_bbox(coords):
+    xs, ys = [], []
+
+    def walk(c):
+        if not c:
+            return
+        if isinstance(c[0], (int, float)):
+            xs.append(c[0])
+            ys.append(c[1])
+        else:
+            for sub in c:
+                walk(sub)
+
+    walk(coords)
+    return (min(xs), min(ys), max(xs), max(ys)) if xs else None
+
+
+def clip_features(features, bbox):
+    """Keep features whose geometry intersects ``bbox`` (min_lon, min_lat,
+    max_lon, max_lat, WGS84). Used for GeoJSON/KML/GPX, which are already lon/lat."""
+    if not bbox:
+        return features
+    kept = []
+    for f in features:
+        gb = _geom_bbox(f["geometry"].get("coordinates"))
+        if gb and _boxes_hit(gb, bbox):
+            kept.append(f)
+    return kept
 
 
 # --- dispatcher --------------------------------------------------------------
 
-def parse_upload(filename, raw):
+def parse_upload(filename, raw, bbox=None):
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext in ("geojson", "json"):
-        return parse_geojson(raw)
+        return clip_features(parse_geojson(raw), bbox)
     if ext == "kml":
-        return parse_kml(raw)
+        return clip_features(parse_kml(raw), bbox)
     if ext == "gpx":
-        return parse_gpx(raw)
+        return clip_features(parse_gpx(raw), bbox)
     if ext == "zip":
-        return parse_shapefile_zip(raw)
+        return parse_shapefile_zip(raw, bbox=bbox)
     raise ValueError("Unsupported file type.")

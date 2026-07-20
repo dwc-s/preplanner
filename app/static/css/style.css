@@ -180,6 +180,9 @@ a:hover { text-decoration: underline; }
 .wms-item-title { flex: 0 1 auto; }
 .wms-item-name { color: var(--muted); font-size: .78rem; margin-left: auto; white-space: nowrap; padding-left: .5rem; }
 .map-toast { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 1200; max-width: min(90%, 30rem); background: var(--danger); color: #fff; padding: .6rem .9rem; border-radius: var(--radius); box-shadow: var(--shadow); font-size: .85rem; line-height: 1.35; cursor: pointer; display: none; }
+.gis-clip { margin-top: .8rem; display: flex; flex-direction: column; gap: .45rem; }
+.clip-check { display: flex; align-items: baseline; gap: .4rem; font-size: .92rem; }
+.clip-area { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
 .wms-manual { margin-top: 1rem; }
 .wms-manual summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
 #wms-selected-count { align-self: center; }

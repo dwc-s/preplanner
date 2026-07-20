@@ -206,3 +206,49 @@
     searchTimer = setTimeout(render, 120);
   });
 })();
+
+
+/* GIS import: clip-to-area, prefilled from the last map view (saved by map.js
+ * to localStorage under the same per-department key). */
+(function () {
+  var form = document.getElementById("gis-import-form");
+  if (!form) return;
+  var toggle = document.getElementById("clip-toggle");
+  var summary = document.getElementById("clip-summary");
+  var refresh = document.getElementById("clip-refresh");
+  var out = {
+    min_lat: document.getElementById("clip-min-lat"),
+    max_lat: document.getElementById("clip-max-lat"),
+    min_lon: document.getElementById("clip-min-lon"),
+    max_lon: document.getElementById("clip-max-lon")
+  };
+  var VIEW_KEY = "pp:mapview:" + (window.CURRENT_USER ? window.CURRENT_USER.department_id : "anon");
+
+  function fmt(n) { return n >= 0 ? n.toFixed(3) : "−" + Math.abs(n).toFixed(3); }
+  function loadView() {
+    try { return JSON.parse(localStorage.getItem(VIEW_KEY) || "null"); } catch (e) { return null; }
+  }
+
+  function apply() {
+    var v = loadView();
+    if (v && typeof v.south === "number") {
+      out.min_lat.value = v.south; out.max_lat.value = v.north;
+      out.min_lon.value = v.west;  out.max_lon.value = v.east;
+      summary.textContent = "Area (lat, lon): " + fmt(v.south) + ", " + fmt(v.west) +
+        "  →  " + fmt(v.north) + ", " + fmt(v.east);
+      toggle.disabled = false;
+    } else {
+      out.min_lat.value = out.max_lat.value = out.min_lon.value = out.max_lon.value = "";
+      summary.textContent = "No saved area yet — open the Map and zoom to your area, then come back.";
+      toggle.checked = false;
+      toggle.disabled = true;
+    }
+    dim();
+  }
+  function dim() { summary.style.opacity = (toggle.checked && !toggle.disabled) ? "" : ".5"; }
+
+  toggle.addEventListener("change", dim);
+  refresh.addEventListener("click", apply);
+  window.addEventListener("storage", function (e) { if (e.key === VIEW_KEY) apply(); });
+  apply();
+})();

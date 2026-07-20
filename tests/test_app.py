@@ -530,6 +530,39 @@ def test_gis_import_shapefile_reprojected(client):
     assert abs(lon - (-72.5)) < 1e-6 and abs(lat - 44.2) < 1e-6
 
 
+def test_gis_import_clip_to_bbox(client):
+    parts = _make_shapefile([(-72.50, 44.20, "Inside"), (-71.00, 42.30, "Outside")])
+    files = [(io.BytesIO(raw), f"pts.{ext}") for ext, raw in parts.items()]
+    r = client.post("/overlays/import", content_type="multipart/form-data",
+                    follow_redirects=True, data={
+                        "files": files, "clip": "1",
+                        "min_lat": "44.0", "max_lat": "44.4",
+                        "min_lon": "-72.7", "max_lon": "-72.3"})
+    assert b"within your map area" in r.data
+    labels = [f["properties"]["label"] for f in client.get("/api/map-features").get_json()["features"]]
+    assert "Inside" in labels and "Outside" not in labels
+
+
+def test_gis_import_clip_projected(client):
+    pytest.importorskip("pyproj")
+    from pyproj import CRS, Transformer
+    prj = CRS.from_epsg(26986).to_wkt("WKT1_ESRI")           # MA State Plane
+    fwd = Transformer.from_crs(4326, 26986, always_xy=True)
+    inside = fwd.transform(-72.50, 42.40)
+    outside = fwd.transform(-70.90, 42.00)                   # ~130 km away
+    parts = _make_shapefile([(inside[0], inside[1], "Inside"),
+                             (outside[0], outside[1], "Outside")], prj=prj)
+    files = [(io.BytesIO(raw), f"proj.{ext}") for ext, raw in parts.items()]
+    client.post("/overlays/import", content_type="multipart/form-data", follow_redirects=True,
+                data={"files": files, "clip": "1", "min_lat": "42.2", "max_lat": "42.6",
+                      "min_lon": "-72.7", "max_lon": "-72.3"})
+    feats = client.get("/api/map-features").get_json()["features"]
+    labels = [f["properties"]["label"] for f in feats]
+    assert "Inside" in labels and "Outside" not in labels
+    lon, lat = next(f for f in feats if f["properties"]["label"] == "Inside")["geometry"]["coordinates"][:2]
+    assert abs(lon + 72.5) < 1e-4 and abs(lat - 42.4) < 1e-4  # kept point reprojected to WGS84
+
+
 def test_gis_import_parsers():
     from app import gis_import
     kml = (b'<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2">'

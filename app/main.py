@@ -488,6 +488,20 @@ def gis_import_upload():
         flash("Choose a file to import.", "error")
         return redirect(url_for("main.overlays"))
 
+    # Optional clip-to-area: only import features intersecting this WGS84 box,
+    # which keeps statewide files down to the department's own area.
+    bbox, clipped = None, False
+    if request.form.get("clip"):
+        try:
+            lats = (float(request.form["min_lat"]), float(request.form["max_lat"]))
+            lons = (float(request.form["min_lon"]), float(request.form["max_lon"]))
+        except (KeyError, ValueError, TypeError):
+            flash("“Clip to area” is on but the area is missing or invalid — open the "
+                  "Map and position it over your area first, then try again.", "error")
+            return redirect(url_for("main.overlays"))
+        bbox = (min(lons), min(lats), max(lons), max(lats))
+        clipped = True
+
     # Split loose Shapefile parts (grouped by basename so several shapefiles can
     # be uploaded at once) from standalone GeoJSON/KML/GPX/zip files.
     shp_groups = {}   # basename -> {ext: bytes}
@@ -513,12 +527,13 @@ def gis_import_upload():
         if "shp" not in parts:
             continue  # e.g. a stray .prj/.xml with no geometry — ignore quietly
         try:
-            features += gis_import.parse_shapefile_parts(parts)
+            features += gis_import.parse_shapefile_parts(parts, bbox=bbox,
+                                                          limit=MAX_IMPORT_FEATURES)
         except Exception as exc:
             errors.append(f"{base}.shp: {exc}")
     for name, raw in standalone:
         try:
-            features += gis_import.parse_upload(name, raw)
+            features += gis_import.parse_upload(name, raw, bbox=bbox)
         except Exception as exc:
             errors.append(f"{name}: {exc}")
 
@@ -537,13 +552,18 @@ def gis_import_upload():
     db.session.commit()
 
     n = len(features)
+    where = " within your map area" if clipped else ""
+    capped = " (capped at the first %d)" % MAX_IMPORT_FEATURES if n >= MAX_IMPORT_FEATURES else ""
     if n and errors:
-        flash(f"Imported {n} feature(s); some files couldn't be read: " + "; ".join(errors),
-              "success")
+        flash(f"Imported {n} feature(s){where}{capped}; some files couldn't be read: "
+              + "; ".join(errors), "success")
     elif n:
-        flash(f"Imported {n} feature(s) — see them on the map.", "success")
+        flash(f"Imported {n} feature(s){where}{capped} — see them on the map.", "success")
     elif errors:
         flash("Could not import: " + "; ".join(errors), "error")
+    elif clipped:
+        flash("No features fell within your map area. Try zooming out a bit, then re-import.",
+              "error")
     else:
         flash("No importable features found.", "error")
     return redirect(url_for("main.overlays"))

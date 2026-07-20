@@ -29,11 +29,34 @@
     return zoneLayer;
   }
 
-  var map = L.map("map").setView([44.2601, -72.5754], 13);
+  // Remember the last place the user looked (per department, in this browser)
+  // and restore it next time. The saved bounds double as the default clip area
+  // for GIS imports — the overlays page reads the same localStorage key.
+  var VIEW_KEY = "pp:mapview:" + (window.CURRENT_USER ? window.CURRENT_USER.department_id : "anon");
+  function loadSavedView() {
+    try { return JSON.parse(localStorage.getItem(VIEW_KEY) || "null"); } catch (e) { return null; }
+  }
+  var savedView = loadSavedView();
+
+  var map = L.map("map").setView(
+    savedView ? [savedView.lat, savedView.lng] : [44.2601, -72.5754],
+    savedView ? savedView.zoom : 13);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   }).addTo(map);
+
+  function saveView() {
+    try {
+      var c = map.getCenter(), b = map.getBounds();
+      localStorage.setItem(VIEW_KEY, JSON.stringify({
+        lat: +c.lat.toFixed(6), lng: +c.lng.toFixed(6), zoom: map.getZoom(),
+        south: +b.getSouth().toFixed(6), west: +b.getWest().toFixed(6),
+        north: +b.getNorth().toFixed(6), east: +b.getEast().toFixed(6)
+      }));
+    } catch (e) {}
+  }
+  map.on("moveend", saveView);
 
   var occupancyLayer = L.layerGroup().addTo(map);
   var footprintLayer = L.layerGroup().addTo(map);
@@ -260,7 +283,7 @@
       renderOccupancies(r[0]);
       renderHydrants(r[1]);
       renderFeatures(r[2]);
-      if (!didFit) { fit(); didFit = true; }
+      if (!didFit) { if (!savedView) fit(); didFit = true; }  // saved view wins
     });
   }
   function fit() {

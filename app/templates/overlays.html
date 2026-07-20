@@ -69,17 +69,31 @@
   <section class="card card-wide">
     <h2>Import GIS file</h2>
     <form method="post" action="{{ url_for('main.gis_import_upload') }}"
-          enctype="multipart/form-data" class="inline-form">
+          enctype="multipart/form-data" id="gis-import-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="file" name="files" multiple
-             accept=".geojson,.json,.kml,.gpx,.zip,.shp,.shx,.dbf,.prj,.cpg,.sbn,.sbx,.xml" required>
-      <button class="btn" type="submit">Import</button>
+      <div class="inline-form" style="margin-top:0;border-top:0;padding-top:0;">
+        <input type="file" name="files" multiple
+               accept=".geojson,.json,.kml,.gpx,.zip,.shp,.shx,.dbf,.prj,.cpg,.sbn,.sbx,.xml" required>
+        <button class="btn" type="submit">Import</button>
+      </div>
+      <div class="gis-clip">
+        <label class="clip-check"><input type="checkbox" name="clip" value="1" id="clip-toggle" checked>
+          Clip to my map area <span class="subtle">— only import features in the area you last viewed on the map (recommended for large/statewide files)</span></label>
+        <input type="hidden" name="min_lat" id="clip-min-lat">
+        <input type="hidden" name="min_lon" id="clip-min-lon">
+        <input type="hidden" name="max_lat" id="clip-max-lat">
+        <input type="hidden" name="max_lon" id="clip-max-lon">
+        <div class="clip-area">
+          <span id="clip-summary" class="subtle"></span>
+          <button type="button" class="btn btn-sm" id="clip-refresh">Use current map view</button>
+        </div>
+      </div>
     </form>
     <p class="hint">GeoJSON, KML, GPX, a zipped Shapefile, or the loose Shapefile parts —
       select the <code>.shp</code>, <code>.dbf</code> and <code>.shx</code> together, plus
       <code>.prj</code> so it can be placed correctly (projected shapefiles are reprojected
-      to lat/lon automatically). Imported shapes become map features — points → access
-      points, lines → routes, polygons → custom. Up to 2000 features.</p>
+      to lat/lon automatically). Points → access points, lines → routes, polygons → custom.
+      Up to 2000 features per import.</p>
   </section>
 {% endblock %}
 
