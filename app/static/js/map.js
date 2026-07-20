@@ -216,13 +216,38 @@
   }, { collapsed: false }).addTo(map);
 
   // WMS config is admin/online-only; unavailable offline (fetch simply fails).
+  // Some servers advertise layers in GetCapabilities that GetMap can't actually
+  // render (restricted DB tables, server errors) — those tiles fail to load,
+  // which would otherwise be a silent "nothing shows". Surface it instead.
+  var wmsToast, wmsToastTimer;
+  function showWmsToast(msg) {
+    if (!wmsToast) {
+      wmsToast = L.DomUtil.create("div", "map-toast", map.getContainer());
+      L.DomEvent.disableClickPropagation(wmsToast);
+      wmsToast.addEventListener("click", function () { wmsToast.style.display = "none"; });
+    }
+    wmsToast.textContent = msg;
+    wmsToast.style.display = "block";
+    clearTimeout(wmsToastTimer);
+    wmsToastTimer = setTimeout(function () { wmsToast.style.display = "none"; }, 12000);
+  }
+
   fetch("/api/wms-layers").then(function (r) { return r.ok ? r.json() : []; })
     .then(function (list) {
       list.forEach(function (w) {
-        layersControl.addOverlay(L.tileLayer.wms(w.url, {
+        var layer = L.tileLayer.wms(w.url, {
           layers: w.layers, format: w.format || "image/png",
           transparent: w.transparent !== false, opacity: w.opacity != null ? w.opacity : 0.7
-        }), "WMS: " + w.name);
+        });
+        var warned = false;
+        layer.on("tileerror", function () {
+          if (warned) return;
+          warned = true;
+          showWmsToast("“" + w.name + "” couldn’t be displayed — the WMS server rejected " +
+            "the request. That layer may be restricted or unavailable on the server.");
+        });
+        layer.on("remove", function () { warned = false; });  // re-check when toggled on again
+        layersControl.addOverlay(layer, "WMS: " + w.name);
       });
     }).catch(function () { /* offline — no WMS */ });
 
