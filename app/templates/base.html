@@ -60,11 +60,24 @@
 
   <script>
     if ("serviceWorker" in navigator) {
-      window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/sw.js").catch(function (e) {
-          console.warn("Service worker registration failed", e);
+      var __dev = location.hostname === "127.0.0.1" || location.hostname === "localhost";
+      if (__dev) {
+        // Dev: don't serve assets from a service-worker cache, so CSS/JS edits
+        // show on a plain refresh. Unregister any leftover SW and clear its
+        // caches. (Offline/PWA behavior still works when served from a real host.)
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (r) { r.unregister(); });
         });
-      });
+        if (window.caches) {
+          caches.keys().then(function (ks) { ks.forEach(function (k) { caches.delete(k); }); });
+        }
+      } else {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker.register("/sw.js").catch(function (e) {
+            console.warn("Service worker registration failed", e);
+          });
+        });
+      }
     }
     (function () {
       var banner = document.getElementById("offline-banner");
