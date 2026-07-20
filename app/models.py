@@ -128,9 +128,14 @@ MAP_SYMBOLS = [
     {"key": "electric", "label": "Electric Shutoff", "code": "ELEC", "color": "#f59f00"},
     {"key": "water", "label": "Water Shutoff", "code": "H2O", "color": "#1c7ed6"},
     {"key": "hazmat", "label": "Hazmat", "code": "HAZ", "color": "#e03131"},
+    {"key": "hazard", "label": "Hazard", "code": "HZRD", "color": "#f76707"},
     {"key": "command", "label": "Command Post", "code": "CMD", "color": "#2f9e44"},
     {"key": "staging", "label": "Staging Area", "code": "STG", "color": "#7048e8"},
     {"key": "watersupply", "label": "Water Supply / Draft", "code": "DRAFT", "color": "#1971c2"},
+    # Rotatable directional arrows (rendered as glyphs client-side; `arrow` = style).
+    {"key": "arrow", "label": "Arrow", "code": "ARR", "color": "#343a40", "arrow": "solid"},
+    {"key": "arrow_line", "label": "Arrow (line)", "code": "ARR", "color": "#1971c2", "arrow": "line"},
+    {"key": "arrow_double", "label": "Arrow (double)", "code": "ARR", "color": "#e03131", "arrow": "double"},
 ]
 MAP_SYMBOL_KEYS = {s["key"] for s in MAP_SYMBOLS}
 
@@ -453,6 +458,7 @@ class MapFeature(db.Model):
     occupancy_id = db.Column(db.Integer, db.ForeignKey("occupancy.id"))
     category = db.Column(db.String(40), nullable=False)
     symbol = db.Column(db.String(40))  # for category "Symbol" (see MAP_SYMBOLS)
+    rotation = db.Column(db.Integer)   # degrees, for directional arrow symbols
     label = db.Column(db.String(200))
     geometry_json = db.Column(db.Text, nullable=False)  # GeoJSON geometry
     color = db.Column(db.String(20))
@@ -483,6 +489,7 @@ class MapFeature(db.Model):
                 "id": self.id,
                 "category": self.category,
                 "symbol": self.symbol,
+                "rotation": self.rotation,
                 "label": self.label,
                 "color": self.display_color,
                 "notes": self.notes,

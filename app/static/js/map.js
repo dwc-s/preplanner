@@ -20,13 +20,38 @@
     { key: "electric", label: "Electric Shutoff", code: "ELEC", color: "#f59f00" },
     { key: "water", label: "Water Shutoff", code: "H2O", color: "#1c7ed6" },
     { key: "hazmat", label: "Hazmat", code: "HAZ", color: "#e03131" },
+    { key: "hazard", label: "Hazard", code: "HZRD", color: "#f76707" },
     { key: "command", label: "Command Post", code: "CMD", color: "#2f9e44" },
     { key: "staging", label: "Staging Area", code: "STG", color: "#7048e8" },
-    { key: "watersupply", label: "Water Supply / Draft", code: "DRAFT", color: "#1971c2" }
+    { key: "watersupply", label: "Water Supply / Draft", code: "DRAFT", color: "#1971c2" },
+    // Rotatable directional arrows (point up at rotation 0; `arrow` = style).
+    { key: "arrow", label: "Arrow", color: "#343a40", arrow: "solid" },
+    { key: "arrow_line", label: "Arrow (line)", color: "#1971c2", arrow: "line" },
+    { key: "arrow_double", label: "Arrow (double)", color: "#e03131", arrow: "double" }
   ];
   var SYMBOLS_BY_KEY = {};
   MAP_SYMBOLS.forEach(function (s) { SYMBOLS_BY_KEY[s.key] = s; });
-  function symbolIcon(sym) {
+  function arrowSvg(sym) {
+    var c = sym.color;
+    if (sym.arrow === "line") {
+      return '<svg width="28" height="28" viewBox="0 0 32 32" class="map-arrow-svg">' +
+        '<g stroke="' + c + '" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round">' +
+        '<line x1="16" y1="29" x2="16" y2="7"/><polyline points="8,15 16,6 24,15"/></g></svg>';
+    }
+    if (sym.arrow === "double") {
+      return '<svg width="28" height="28" viewBox="0 0 32 32" class="map-arrow-svg">' +
+        '<g stroke="' + c + '" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round">' +
+        '<polyline points="7,17 16,7 25,17"/><polyline points="7,26 16,16 25,26"/></g></svg>';
+    }
+    return '<svg width="28" height="28" viewBox="0 0 32 32" class="map-arrow-svg">' +
+      '<path d="M16 3 L27 18 L20 18 L20 29 L12 29 L12 18 L5 18 Z" fill="' + c +
+      '" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+  }
+  function symbolIcon(sym, rotation) {
+    if (sym.arrow) {
+      return L.divIcon({ className: "map-symbol-icon", iconSize: [28, 28], iconAnchor: [14, 14],
+        html: '<span class="map-arrow" style="transform:rotate(' + (rotation || 0) + 'deg)">' + arrowSvg(sym) + "</span>" });
+    }
     return L.divIcon({ className: "map-symbol-icon", iconSize: null, iconAnchor: [14, 14],
       html: '<span class="map-symbol" style="background:' + sym.color + '">' + esc(sym.code) + "</span>" });
   }
@@ -139,7 +164,7 @@
 
   // --- map features (large set: incremental diff by uuid) --------------------
   function sigOf(f) {
-    return [f.updated_at, f.geometry_json, f.label, f.category, f.color, f.symbol].join("|");
+    return [f.updated_at, f.geometry_json, f.label, f.category, f.color, f.symbol, f.rotation].join("|");
   }
 
   function renderFeatures(feats) {
@@ -164,7 +189,7 @@
     if (geom.type === "Point") {
       var sym = f.symbol && SYMBOLS_BY_KEY[f.symbol];
       var ll = [geom.coordinates[1], geom.coordinates[0]];
-      layer = sym ? L.marker(ll, { icon: symbolIcon(sym) }) : L.marker(ll);
+      layer = sym ? L.marker(ll, { icon: symbolIcon(sym, f.rotation) }) : L.marker(ll);
     } else {
       layer = L.geoJSON({ type: "Feature", geometry: geom },
         { style: { color: color, weight: 4, fillOpacity: 0.2 } }).getLayers()[0];
@@ -175,7 +200,7 @@
     layer.on("pm:dragend", function () { onGeometryEdited(f, layer); });
     var group = groupForCategory(f.category);
     group.addLayer(layer);
-    rendered[f.uuid] = { layer: layer, group: group, sig: sig };
+    rendered[f.uuid] = { layer: layer, group: group, sig: sig, f: f };
   }
 
   function onGeometryEdited(f, layer) {
@@ -183,16 +208,20 @@
     Store.update("map_feature", f.uuid, { geometry_json: gj });
     // Keep our rendered signature current so the re-render doesn't rebuild (and
     // disrupt) the layer the user just edited in place.
-    if (rendered[f.uuid]) rendered[f.uuid].sig = [f.updated_at, gj, f.label, f.category, f.color, f.symbol].join("|");
+    if (rendered[f.uuid]) rendered[f.uuid].sig = sigOf(Object.assign({}, f, { geometry_json: gj }));
   }
 
   function featurePopupHtml(f) {
     var opts = CATEGORIES.map(function (c) {
       return '<option value="' + c + '"' + (c === f.category ? " selected" : "") + ">" + c + "</option>";
     }).join("");
-    return '<div class="popup mf-edit" data-uuid="' + f.uuid + '">' +
+    var sym = f.symbol && SYMBOLS_BY_KEY[f.symbol];
+    var rotRow = (sym && sym.arrow)
+      ? '<label class="mf-row"><span>Rotation</span><input type="range" class="mf-rot" min="0" max="345" step="15" value="' + (f.rotation || 0) + '"></label>'
+      : "";
+    return '<div class="popup mf-edit" data-uuid="' + f.uuid + '" data-symbol="' + esc(f.symbol || "") + '">' +
       '<label class="mf-row"><span>Label</span><input class="mf-label" value="' + esc(f.label || "") + '"></label>' +
-      '<label class="mf-row"><span>Category</span><select class="mf-cat">' + opts + '</select></label>' +
+      '<label class="mf-row"><span>Category</span><select class="mf-cat">' + opts + '</select></label>' + rotRow +
       '<label class="mf-row"><span>Notes</span><input class="mf-notes" value="' + esc(f.notes || "") + '"></label>' +
       '<div class="mf-actions"><button type="button" class="btn btn-sm mf-save">Save</button>' +
       '<button type="button" class="btn btn-sm btn-danger mf-del">Delete</button></div></div>';
@@ -225,6 +254,22 @@
     var box = root && root.querySelector(".mf-edit");
     if (!box) return;
     var uuid = box.getAttribute("data-uuid");
+    var slider = box.querySelector(".mf-rot");
+    if (slider) {
+      var sym = SYMBOLS_BY_KEY[box.getAttribute("data-symbol")];
+      var layer = e.popup._source;
+      slider.addEventListener("input", function () {   // live visual while dragging
+        var span = layer._icon && layer._icon.querySelector(".map-arrow");
+        if (span) span.style.transform = "rotate(" + slider.value + "deg)";
+      });
+      slider.addEventListener("change", function () {  // persist on release
+        var deg = +slider.value;
+        if (sym) layer.setIcon(symbolIcon(sym, deg));
+        Store.update("map_feature", uuid, { rotation: deg });
+        var reg = rendered[uuid];
+        if (reg && reg.f) reg.sig = sigOf(Object.assign({}, reg.f, { rotation: deg }));
+      });
+    }
     box.querySelector(".mf-save").onclick = function () {
       Store.update("map_feature", uuid, {
         label: box.querySelector(".mf-label").value,
@@ -283,8 +328,9 @@
       MAP_SYMBOLS.forEach(function (s) {
         var btn = L.DomUtil.create("button", "map-symbol-btn", panel);
         btn.type = "button"; btn.setAttribute("data-key", s.key);
-        btn.innerHTML = '<span class="map-symbol" style="background:' + s.color + '">' + esc(s.code) +
-          "</span><span>" + esc(s.label) + "</span>";
+        btn.innerHTML = (s.arrow ? '<span class="map-arrow-swatch">' + arrowSvg(s) + "</span>"
+          : '<span class="map-symbol" style="background:' + s.color + '">' + esc(s.code) + "</span>") +
+          "<span>" + esc(s.label) + "</span>";
         L.DomEvent.on(btn, "click", function (ev) {
           L.DomEvent.stop(ev);
           var was = pendingSymbol === s.key;
