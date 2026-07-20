@@ -400,11 +400,41 @@ def floorplan_delete(fp_id):
 MAX_IMPORT_FEATURES = 2000
 
 
+# One-click XYZ tile basemaps (topo / imagery / hillshade). All public, no API
+# key, EPSG:3857 (Leaflet default). Verified live over Massachusetts.
+TILE_PRESETS = {
+    "usgs_topo": {
+        "name": "USGS Topo",
+        "url": "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}",
+        "attribution": "USGS The National Map", "max_zoom": 16, "opacity": 1.0},
+    "usgs_imagery": {
+        "name": "USGS Imagery",
+        "url": "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
+        "attribution": "USGS The National Map", "max_zoom": 16, "opacity": 1.0},
+    "usgs_imagery_topo": {
+        "name": "USGS Imagery + Topo",
+        "url": "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}",
+        "attribution": "USGS The National Map", "max_zoom": 16, "opacity": 1.0},
+    "esri_imagery": {
+        "name": "Esri World Imagery",
+        "url": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        "attribution": "Esri, Maxar, Earthstar Geographics", "max_zoom": 19, "opacity": 1.0},
+    "esri_hillshade": {
+        "name": "Terrain Hillshade",
+        "url": "https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}",
+        "attribution": "Esri", "max_zoom": 16, "opacity": 0.5},
+    "opentopomap": {
+        "name": "OpenTopoMap",
+        "url": "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+        "attribution": "© OpenTopoMap (CC-BY-SA)", "max_zoom": 17, "opacity": 1.0},
+}
+
+
 @main_bp.get("/overlays")
 @admin_required
 def overlays():
-    wms = dept_query(WmsLayer).order_by(WmsLayer.name).all()
-    return render_template("overlays.html", wms_layers=wms)
+    wms = dept_query(WmsLayer).order_by(WmsLayer.kind, WmsLayer.name).all()
+    return render_template("overlays.html", wms_layers=wms, tile_presets=TILE_PRESETS)
 
 
 @main_bp.post("/overlays")
@@ -464,6 +494,42 @@ def overlay_add_bulk():
         added += 1
     db.session.commit()
     return jsonify(added=added)
+
+
+@main_bp.post("/overlays/tiles")
+@admin_required
+def overlay_add_tiles():
+    """Add an XYZ tile basemap — either a built-in preset or a custom template."""
+    preset_key = _str(request.form, "preset")
+    if preset_key:
+        preset = TILE_PRESETS.get(preset_key)
+        if not preset:
+            flash("Unknown basemap.", "error")
+            return redirect(url_for("main.overlays"))
+        name, url = preset["name"], preset["url"]
+        attribution, max_zoom, opacity = preset["attribution"], preset["max_zoom"], preset["opacity"]
+    else:
+        name = _str(request.form, "name")
+        url = _str(request.form, "url")
+        if not name or "{z}" not in url or "{x}" not in url or "{y}" not in url:
+            flash("A name and an XYZ URL template with {z}/{x}/{y} are required.", "error")
+            return redirect(url_for("main.overlays"))
+        attribution = _str(request.form, "attribution") or None
+        max_zoom = _int(request.form, "max_zoom")
+        opacity = _float(request.form, "opacity")
+        opacity = opacity if opacity is not None else 1.0
+
+    if dept_query(WmsLayer).filter_by(url=url).first():
+        flash(f"“{name}” is already added.", "error")
+        return redirect(url_for("main.overlays"))
+    db.session.add(WmsLayer(
+        department_id=current_user.department_id, kind="xyz",
+        name=name[:120], url=url[:500], layers="",
+        opacity=opacity, attribution=(attribution or None), max_zoom=max_zoom, enabled=True,
+    ))
+    db.session.commit()
+    flash(f"Added basemap “{name}”.", "success")
+    return redirect(url_for("main.overlays"))
 
 
 @main_bp.post("/overlays/<int:layer_id>/delete")

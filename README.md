@@ -49,9 +49,12 @@ occupancies/hydrants) — it prints a demo login.
   footprint and set its point right on the pre-plan form. The map reopens where
   you last left it (which also becomes the default GIS-import clip area).
 - **Hydrants** — add/list/delete, NFPA 291 flow-class colour coding.
-- **WMS overlays & GIS import** — add state/county WMS layers by pasting the
-  server's URL and **picking from its layer list** — no need to know layer names;
-  each choice becomes a toggleable map overlay. Also bulk-import **GeoJSON / KML /
+- **Basemaps & overlays** — one-click **tiled basemaps** (USGS topo, aerial
+  imagery, terrain hillshade, OpenTopoMap) sit under your pre-plans — a light way
+  to get raster context without importing huge LiDAR/topo files. Add **WMS**
+  layers by pasting a server's URL and **picking from its layer list** (no need to
+  know layer names); each becomes a toggleable overlay.
+- **GIS import** — bulk-import **GeoJSON / KML /
   GPX / Shapefiles** — either a zipped shapefile or its **loose parts**
   (`.shp` + `.dbf`/`.shx`/`.prj`), **auto-reprojected to WGS84** from the `.prj`
   (pure-Python; no system GDAL) — as map features, optionally **clipped to your

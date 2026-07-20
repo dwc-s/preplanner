@@ -452,6 +452,36 @@ def test_wms_overlay_add_bulk_admin_only(app):
     assert r.status_code == 403
 
 
+def test_tile_preset_adds_xyz(client):
+    r = client.post("/overlays/tiles", data={"preset": "usgs_topo"}, follow_redirects=True)
+    assert b"USGS Topo" in r.data
+    tiles = [w for w in client.get("/api/wms-layers").get_json() if w["kind"] == "xyz"]
+    assert len(tiles) == 1
+    assert "{z}" in tiles[0]["url"] and tiles[0]["attribution"] and tiles[0]["max_zoom"]
+
+
+def test_tile_custom_requires_template(client):
+    r = client.post("/overlays/tiles", data={"name": "X", "url": "https://x/tiles.png"},
+                    follow_redirects=True)
+    assert b"{z}/{x}/{y}" in r.data
+    assert client.get("/api/wms-layers").get_json() == []
+
+
+def test_tile_custom_adds_xyz(client):
+    client.post("/overlays/tiles", data={
+        "name": "My tiles", "url": "https://tiles.example/{z}/{x}/{y}.png",
+        "attribution": "Me", "max_zoom": "18"}, follow_redirects=True)
+    w = client.get("/api/wms-layers").get_json()[0]
+    assert w["kind"] == "xyz" and w["max_zoom"] == 18 and w["name"] == "My tiles"
+
+
+def test_tile_admin_only(app):
+    make_dept_user(app, "Dept A", "member@example.com", role="member")
+    c = app.test_client()
+    login(c, "member@example.com")
+    assert c.post("/overlays/tiles", data={"preset": "usgs_topo"}).status_code == 403
+
+
 def test_gis_import_geojson(client):
     import json as _json
     fc = {"type": "FeatureCollection", "features": [

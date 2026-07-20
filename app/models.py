@@ -456,8 +456,11 @@ class MapFeature(db.Model):
 
 
 class WmsLayer(db.Model):
-    """A configured WMS overlay (e.g. a state parcel/GIS portal endpoint) that
-    the department can toggle on the map."""
+    """A configured map overlay the department can toggle on the map.
+
+    Two kinds share this table: ``kind="wms"`` (a WMS endpoint + ``layers``) and
+    ``kind="xyz"`` (a slippy-tile URL template like a topo/imagery basemap, where
+    ``url`` holds the ``{z}/{x}/{y}`` template and ``layers`` is unused)."""
 
     __tablename__ = "wms_layer"
 
@@ -465,12 +468,15 @@ class WmsLayer(db.Model):
     department_id = db.Column(
         db.Integer, db.ForeignKey("department.id"), nullable=False, index=True
     )
+    kind = db.Column(db.String(8), nullable=False, default="wms")  # "wms" | "xyz"
     name = db.Column(db.String(120), nullable=False)     # display name
-    url = db.Column(db.String(500), nullable=False)      # WMS base URL
-    layers = db.Column(db.String(300), nullable=False)   # comma-separated layer names
+    url = db.Column(db.String(500), nullable=False)      # WMS base URL or XYZ template
+    layers = db.Column(db.String(300), nullable=False)   # WMS layer names (unused for xyz)
     image_format = db.Column(db.String(40), default="image/png")
     transparent = db.Column(db.Boolean, default=True)
     opacity = db.Column(db.Float, default=0.7)
+    attribution = db.Column(db.String(200))              # tile-service credit (xyz)
+    max_zoom = db.Column(db.Integer)                     # tile service max zoom (xyz)
     enabled = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=_utcnow)
 
@@ -479,12 +485,15 @@ class WmsLayer(db.Model):
     def to_dict(self):
         return {
             "id": self.id,
+            "kind": self.kind or "wms",
             "name": self.name,
             "url": self.url,
             "layers": self.layers,
             "format": self.image_format or "image/png",
             "transparent": bool(self.transparent),
             "opacity": self.opacity if self.opacity is not None else 0.7,
+            "attribution": self.attribution,
+            "max_zoom": self.max_zoom,
         }
 
 

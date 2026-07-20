@@ -5,16 +5,16 @@
   <div class="page-head"><h1>Map layers &amp; import</h1></div>
 
   <section class="card card-wide">
-    <h2>WMS overlays</h2>
+    <h2>Map overlays</h2>
     {% if wms_layers %}
       <table class="table">
-        <thead><tr><th>Name</th><th>URL</th><th>Layers</th><th>Opacity</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Type</th><th>Source</th><th>Opacity</th><th></th></tr></thead>
         <tbody>
           {% for w in wms_layers %}
             <tr>
               <td>{{ w.name }}</td>
-              <td class="ellipsis">{{ w.url }}</td>
-              <td>{{ w.layers }}</td>
+              <td>{{ "Tiles" if w.kind == "xyz" else "WMS" }}</td>
+              <td class="ellipsis">{{ w.url if w.kind == "xyz" else w.layers }}</td>
               <td>{{ "%.0f%%"|format((w.opacity or 0.7) * 100) }}</td>
               <td>
                 <form method="post" action="{{ url_for('main.overlay_delete', layer_id=w.id) }}"
@@ -28,8 +28,33 @@
         </tbody>
       </table>
     {% else %}
-      <p class="subtle">No WMS overlays configured.</p>
+      <p class="subtle">No overlays configured yet.</p>
     {% endif %}
+
+    <h3 class="subhead">Add a basemap (topo · imagery · terrain)</h3>
+    <p class="hint">One-click aerial, topographic, and terrain layers to sit under your pre-plans —
+      a lightweight way to get raster context without importing huge LiDAR/topo files.</p>
+    <div class="tile-presets">
+      {% for key, p in tile_presets.items() %}
+        <form method="post" action="{{ url_for('main.overlay_add_tiles') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="preset" value="{{ key }}">
+          <button class="btn btn-sm" type="submit">+ {{ p.name }}</button>
+        </form>
+      {% endfor %}
+    </div>
+    <details class="wms-manual">
+      <summary>Add a custom tile URL (advanced)</summary>
+      <form method="post" action="{{ url_for('main.overlay_add_tiles') }}" class="inline-form"
+            style="margin-top:.4rem;border-top:0;padding-top:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="name" placeholder="Display name" required>
+        <input type="url" name="url" placeholder="https://…/{z}/{x}/{y}.png" required>
+        <input type="text" name="attribution" placeholder="Attribution (optional)">
+        <input type="number" name="max_zoom" placeholder="max zoom" min="1" max="22" style="max-width:110px;">
+        <button class="btn" type="submit">Add basemap</button>
+      </form>
+    </details>
 
     <h3 class="subhead">Add overlays from a WMS server</h3>
     <p class="hint">Paste a WMS endpoint and pick the layers you want — no GIS knowledge needed.

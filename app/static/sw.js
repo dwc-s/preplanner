@@ -10,7 +10,7 @@
  * Writes (POST/PUT/DELETE) are passed straight through — offline editing with a
  * sync queue is intentionally out of scope for this version.
  */
-const APP_CACHE = "preplanner-shell-v6";
+const APP_CACHE = "preplanner-shell-v7";
 const TILE_CACHE = "preplanner-tiles-v1";
 const TILE_LIMIT = 600;
 

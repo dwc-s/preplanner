@@ -258,19 +258,30 @@
   fetch("/api/wms-layers").then(function (r) { return r.ok ? r.json() : []; })
     .then(function (list) {
       list.forEach(function (w) {
-        var layer = L.tileLayer.wms(w.url, {
-          layers: w.layers, format: w.format || "image/png",
-          transparent: w.transparent !== false, opacity: w.opacity != null ? w.opacity : 0.7
-        });
+        var layer, label;
+        if (w.kind === "xyz") {  // slippy-tile basemap (topo / imagery / hillshade)
+          layer = L.tileLayer(w.url, {
+            opacity: w.opacity != null ? w.opacity : 1,
+            maxNativeZoom: w.max_zoom || 19, maxZoom: 22,
+            attribution: w.attribution || ""
+          });
+          label = w.name;
+        } else {
+          layer = L.tileLayer.wms(w.url, {
+            layers: w.layers, format: w.format || "image/png",
+            transparent: w.transparent !== false, opacity: w.opacity != null ? w.opacity : 0.7
+          });
+          label = "WMS: " + w.name;
+        }
         var warned = false;
         layer.on("tileerror", function () {
           if (warned) return;
           warned = true;
-          showWmsToast("“" + w.name + "” couldn’t be displayed — the WMS server rejected " +
-            "the request. That layer may be restricted or unavailable on the server.");
+          showWmsToast("“" + w.name + "” couldn’t be displayed — the server rejected the " +
+            "request. That layer may be restricted, out of range, or unavailable.");
         });
         layer.on("remove", function () { warned = false; });  // re-check when toggled on again
-        layersControl.addOverlay(layer, "WMS: " + w.name);
+        layersControl.addOverlay(layer, label);
       });
     }).catch(function () { /* offline — no WMS */ });
 
