@@ -10,10 +10,20 @@ Pre-Planner has not yet cut a numbered release — everything below is on the
 
 ### Added
 
+**Home dashboard & pre-plan review**
+- Signed-in members now land on a **private dashboard** at `/` instead of the map:
+  recent department activity (new pre-plans), **announcements** posted by admins,
+  and a **sortable list of your pre-plans** with their review **status** and the
+  reviewer each was **submitted to**. The interactive map moves to `/map`.
+- Pre-plans now record an **author** and a **status** (draft / in review / approved /
+  needs changes). A **"Submit for review"** action records who a plan was sent to —
+  the full review workflow (reviewer notifications, approve / request-changes) is on
+  the roadmap.
+
 **Public landing & explore-first sandbox**
 - A public **splash / landing page** at `/` for logged-out visitors — the
   Pre-Planner logo, a short "about" blurb, and clear calls to action (try the
-  sandbox, sign in, sign up). Signed-in members still get the map at `/`.
+  sandbox, sign in, sign up).
 - A one-click **sandbox** so anyone can try the full app before signing up: it
   spins up a private, pre-seeded workspace, signs the visitor in, and lets them
   create pre-plans, draw on the map, add hydrants and symbols, and more. Each

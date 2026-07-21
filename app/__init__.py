@@ -85,6 +85,7 @@ def create_app(config_object="config.Config"):
             "HAZARD_SEVERITIES": models.HAZARD_SEVERITIES,
             "MAP_FEATURE_CATEGORIES": models.MAP_FEATURE_CATEGORIES,
             "FIRE_RANKS": models.FIRE_RANKS,
+            "PREPLAN_STATUSES": models.PREPLAN_STATUSES,
         }
 
     return app

@@ -196,6 +196,88 @@ def test_purge_expired_sandboxes(app):
         assert Occupancy.query.filter_by(department_id=real_id).count() > 0
 
 
+# --- dashboard (private home) + review + announcements -----------------------
+
+def test_dashboard_is_home_for_members(client):
+    """Logged-in members get the dashboard at /, and the map moves to /map."""
+    r = client.get("/")
+    assert r.status_code == 200
+    body = r.get_data(as_text=True)
+    assert "Your pre-plans" in body
+    assert 'id="map"' not in body            # the map is no longer served at /
+    assert client.get("/map").status_code == 200  # it lives here now
+
+
+def test_new_occupancy_stamps_created_by(client, app):
+    client.post("/occupancies/new", data={"name": "Ownership Test Bldg"},
+                follow_redirects=True)
+    with app.app_context():
+        occ = Occupancy.query.filter_by(name="Ownership Test Bldg").first()
+        author = User.query.filter_by(email="a@example.com").first()
+        assert occ is not None
+        assert occ.created_by == author.id
+        assert occ.status == "draft"
+
+
+def test_announcement_requires_admin(app):
+    dept_id = make_dept_user(app, "Dept A", "admin@a.com", role="admin")
+    with app.app_context():
+        member = User(email="member@a.com", name="Member", role="member",
+                      department_id=dept_id)
+        member.set_password("pw")
+        db.session.add(member)
+        db.session.commit()
+
+    admin_c = app.test_client()
+    login(admin_c, "admin@a.com")
+    r = admin_c.post("/announcements", data={"body": "Drill Saturday 0800"},
+                     follow_redirects=True)
+    assert r.status_code == 200
+    assert "Drill Saturday 0800" in admin_c.get("/").get_data(as_text=True)
+
+    member_c = app.test_client()
+    login(member_c, "member@a.com")
+    assert member_c.post("/announcements", data={"body": "nope"}).status_code == 403
+    # ...but the member still sees the admin's announcement on their dashboard
+    assert "Drill Saturday 0800" in member_c.get("/").get_data(as_text=True)
+
+
+def test_submit_for_review_sets_status(client, app):
+    client.post("/occupancies/new", data={"name": "Review Test Bldg"},
+                follow_redirects=True)
+    with app.app_context():
+        occ = Occupancy.query.filter_by(name="Review Test Bldg").first()
+        reviewer = User(email="reviewer@a.com", name="Reviewer", role="member",
+                        department_id=occ.department_id)
+        reviewer.set_password("pw")
+        db.session.add(reviewer)
+        db.session.commit()
+        occ_id, reviewer_id = occ.id, reviewer.id
+
+    r = client.post(f"/occupancies/{occ_id}/submit-review",
+                    data={"reviewer_id": reviewer_id}, follow_redirects=True)
+    assert r.status_code == 200
+    with app.app_context():
+        occ = db.session.get(Occupancy, occ_id)
+        assert occ.status == "in_review"
+        assert occ.submitted_to_id == reviewer_id
+        assert occ.submitted_at is not None
+
+
+def test_submit_for_review_requires_a_reviewer(client, app):
+    client.post("/occupancies/new", data={"name": "No Reviewer Bldg"},
+                follow_redirects=True)
+    with app.app_context():
+        occ_id = Occupancy.query.filter_by(name="No Reviewer Bldg").first().id
+    # Submitting without picking a reviewer must not flip the status.
+    client.post(f"/occupancies/{occ_id}/submit-review", data={"reviewer_id": ""},
+                follow_redirects=True)
+    with app.app_context():
+        occ = db.session.get(Occupancy, occ_id)
+        assert occ.status == "draft"
+        assert occ.submitted_to_id is None
+
+
 # --- occupancy CRUD (scoped to the logged-in department) ---------------------
 
 def test_empty_api_is_valid_geojson(client):

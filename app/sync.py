@@ -62,7 +62,7 @@ def _set_created_by(row):
 
 
 SYNCABLE = {
-    "occupancy": EntitySpec(Occupancy, _OCC_FIELDS),
+    "occupancy": EntitySpec(Occupancy, _OCC_FIELDS, on_create=_set_created_by),
     "hydrant": EntitySpec(Hydrant, [
         "label", "latitude", "longitude", "flow_gpm", "static_pressure",
         "residual_pressure", "size_inches", "hydrant_type", "in_service", "notes",

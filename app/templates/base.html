@@ -24,7 +24,7 @@
     </a>
     {% if current_user.is_authenticated %}
     <nav class="nav">
-      <a href="{{ url_for('main.index') }}">Map</a>
+      <a href="{{ url_for('main.map_view') }}">Map</a>
       <a href="{{ url_for('main.occupancy_list') }}">Occupancies</a>
       <a href="{{ url_for('main.hydrant_list') }}">Hydrants</a>
       <a href="{{ url_for('auth.roster') }}">Roster</a>

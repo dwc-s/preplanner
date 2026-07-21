@@ -143,12 +143,17 @@ def build_sample_records():
     return occupancies, hydrants
 
 
-def seed_department(dept):
+def seed_department(dept, created_by=None):
     """Populate ``dept`` with the sample pre-plans and hydrants. Adds them to the
-    session but does not commit — the caller controls the transaction."""
+    session but does not commit — the caller controls the transaction. If ``created_by``
+    (a User) is given, the pre-plans are attributed to them so they show up under
+    "Your pre-plans" on the dashboard."""
     occupancies, hydrants = build_sample_records()
     for record in occupancies + hydrants:
         record.department_id = dept.id
+    if created_by is not None:
+        for occ in occupancies:
+            occ.created_by = created_by.id
     db.session.add_all(occupancies + hydrants)
     return len(occupancies) + len(hydrants)
 
@@ -165,13 +170,15 @@ def seed_database():
         dept = Department(name=DEMO_DEPARTMENT)
         db.session.add(dept)
         db.session.flush()  # assign dept.id
-    if not User.query.filter_by(email=DEMO_EMAIL).first():
+    admin = User.query.filter_by(email=DEMO_EMAIL).first()
+    if admin is None:
         admin = User(email=DEMO_EMAIL, name="Demo Admin",
                      role="admin", department_id=dept.id)
         admin.set_password(DEMO_PASSWORD)
         db.session.add(admin)
+        db.session.flush()  # assign admin.id so pre-plans can be attributed
 
-    n = seed_department(dept)
+    n = seed_department(dept, created_by=admin)
     db.session.commit()
     return n
 

@@ -17,7 +17,9 @@ from flask import flash, redirect, request, url_for, current_app
 from flask_login import current_user
 
 from .extensions import db
-from .models import Department, Occupancy, Hydrant, MapFeature, WmsLayer, Deletion
+from .models import (
+    Department, Occupancy, Hydrant, MapFeature, WmsLayer, Deletion, Announcement,
+)
 
 SANDBOX_TTL_HOURS = 24
 
@@ -53,6 +55,7 @@ def purge_sandbox(dept):
     hazards, and floor plans cascade; the department delete cascades its users.
     """
     dept_id = dept.id
+    Announcement.query.filter_by(department_id=dept_id).delete(synchronize_session=False)
     Deletion.query.filter_by(department_id=dept_id).delete(synchronize_session=False)
     MapFeature.query.filter_by(department_id=dept_id).delete(synchronize_session=False)
     Hydrant.query.filter_by(department_id=dept_id).delete(synchronize_session=False)

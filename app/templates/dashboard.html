@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Home · Pre-Planner{% endblock %}
+
+{% block content %}
+<div class="dash">
+  <header class="dash-head">
+    <h1>Welcome{% if current_user.name %}, {{ current_user.name.split(' ')[0] }}{% endif %}</h1>
+    <a class="btn btn-primary" href="{{ url_for('main.occupancy_editor') }}?new=1">+ New Pre-Plan</a>
+  </header>
+
+  <div class="dash-grid">
+    <section class="dash-main">
+      <div class="card">
+        <h2>Your pre-plans</h2>
+        {% if my_preplans %}
+        <table class="table sortable" id="my-preplans">
+          <thead>
+            <tr>
+              <th data-sort="text">Name</th>
+              <th data-sort="text">Status</th>
+              <th data-sort="text">Submitted to</th>
+              <th data-sort="date">Updated</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for occ in my_preplans %}
+            <tr>
+              <td><a href="{{ url_for('main.occupancy_detail', occ_id=occ.id) }}">{{ occ.name }}</a></td>
+              <td><span class="status status-{{ occ.status }}">{{ occ.status|replace('_', ' ')|title }}</span></td>
+              <td>{{ (occ.reviewer.name or occ.reviewer.email) if occ.reviewer else '—' }}</td>
+              <td data-value="{{ occ.updated_at.isoformat() if occ.updated_at else '' }}">
+                {{ occ.updated_at.strftime('%Y-%m-%d') if occ.updated_at else '—' }}</td>
+              <td class="dash-actions">
+                {% if reviewers %}
+                <details class="submit-review">
+                  <summary class="btn btn-sm">Submit for review</summary>
+                  <form method="post" action="{{ url_for('main.occupancy_submit_review', occ_id=occ.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select name="reviewer_id" aria-label="Reviewer" required>
+                      <option value="" disabled selected>— reviewer —</option>
+                      {% for m in reviewers %}
+                        <option value="{{ m.id }}">{{ m.name or m.email }}</option>
+                      {% endfor %}
+                    </select>
+                    <button class="btn btn-sm btn-primary" type="submit">Submit</button>
+                  </form>
+                </details>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="subtle">You haven't created any pre-plans yet.
+          <a href="{{ url_for('main.occupancy_editor') }}?new=1">Start one →</a></p>
+        {% endif %}
+      </div>
+    </section>
+
+    <aside class="dash-side">
+      <div class="card">
+        <h2>Announcements</h2>
+        {% if current_user.is_admin %}
+        <form class="ann-form" method="post" action="{{ url_for('main.announcement_create') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <textarea name="body" rows="2" placeholder="Post a note to your department…" required></textarea>
+          <button class="btn btn-sm btn-primary" type="submit">Post</button>
+        </form>
+        {% endif %}
+        {% if announcements %}
+        <ul class="ann-list">
+          {% for a in announcements %}
+          <li>
+            <p>{{ a.body }}</p>
+            <div class="ann-meta">
+              <span>{{ (a.author.name or a.author.email) if a.author else 'Admin' }}
+                · {{ a.created_at.strftime('%b %d') if a.created_at else '' }}</span>
+              {% if current_user.is_admin %}
+              <form method="post" action="{{ url_for('main.announcement_delete', ann_id=a.id) }}"
+                    onsubmit="return confirm('Remove this announcement?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-ghost" type="submit" title="Remove">&times;</button>
+              </form>
+              {% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="subtle">No announcements yet.</p>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <h2>Recent activity</h2>
+        {% if recent %}
+        <ul class="activity">
+          {% for occ in recent %}
+          <li>
+            <a href="{{ url_for('main.occupancy_detail', occ_id=occ.id) }}">{{ occ.name }}</a>
+            <span class="subtle">{{ (occ.author.name or occ.author.email) if occ.author else 'Someone' }}
+              · {{ occ.created_at.strftime('%b %d') if occ.created_at else '' }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="subtle">No pre-plans yet.</p>
+        {% endif %}
+      </div>
+    </aside>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

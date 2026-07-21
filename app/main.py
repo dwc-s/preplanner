@@ -9,6 +9,7 @@ Every route is login-gated and department-scoped via the helpers in scoping.py.
 import json
 import os
 import secrets
+from datetime import datetime, timezone
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for, flash,
@@ -21,7 +22,7 @@ from werkzeug.utils import secure_filename
 from .extensions import db, limiter
 from .models import (
     Department, User, Occupancy, Contact, Hazard, Hydrant, FloorPlan, WmsLayer,
-    MapFeature, MAP_FEATURE_CATEGORIES,
+    MapFeature, Announcement, MAP_FEATURE_CATEGORIES,
 )
 from .scoping import dept_query, get_owned, get_owned_child
 from .auth import admin_required
@@ -90,14 +91,34 @@ def _populate_occupancy(occ, form):
         setattr(occ, f, _bool(form, f))
 
 
-# --- landing / map -----------------------------------------------------------
+# --- landing / dashboard / map ----------------------------------------------
 
 @main_bp.get("/")
 def index():
-    """Logged-out visitors get the public splash; members get the map."""
-    if current_user.is_authenticated:
-        return render_template("index.html")
-    return render_template("landing.html")
+    """Logged-out visitors get the public splash; members get their dashboard."""
+    if not current_user.is_authenticated:
+        return render_template("landing.html")
+    dept_id = current_user.department_id
+    recent = (dept_query(Occupancy)
+              .order_by(Occupancy.created_at.desc()).limit(8).all())
+    announcements = (Announcement.query.filter_by(department_id=dept_id)
+                     .order_by(Announcement.created_at.desc()).limit(10).all())
+    my_preplans = (dept_query(Occupancy).filter_by(created_by=current_user.id)
+                   .order_by(Occupancy.updated_at.desc()).all())
+    # Possible reviewers = other active members (you can't submit to yourself). When
+    # empty (solo dept / sandbox), the dashboard hides the "submit for review" action.
+    reviewers = (User.query.filter_by(department_id=dept_id, is_active=True)
+                 .filter(User.id != current_user.id)
+                 .order_by(User.name).all())
+    return render_template("dashboard.html", recent=recent, announcements=announcements,
+                           my_preplans=my_preplans, reviewers=reviewers)
+
+
+@main_bp.get("/map")
+@login_required
+def map_view():
+    """The interactive map (previously served at /)."""
+    return render_template("index.html")
 
 
 @main_bp.get("/sandbox")
@@ -131,7 +152,8 @@ def sandbox_start():
                 role="admin", department_id=dept.id)
     user.set_password(secrets.token_urlsafe(16))  # random; never surfaced
     db.session.add(user)
-    seed_department(dept)
+    db.session.flush()  # assign user.id so demo pre-plans can be attributed to them
+    seed_department(dept, created_by=user)
     db.session.commit()
 
     login_user(user)  # the persistent sandbox banner (base.html) is the welcome
@@ -172,7 +194,8 @@ def occupancy_new():
             return render_template(
                 "occupancy_form.html", occupancy=None, form=request.form
             )
-        occ = Occupancy(department_id=current_user.department_id)
+        occ = Occupancy(department_id=current_user.department_id,
+                        created_by=current_user.id)
         _populate_occupancy(occ, request.form)
         db.session.add(occ)
         db.session.commit()
@@ -222,6 +245,55 @@ def occupancy_delete(occ_id):
     db.session.commit()
     flash(f"Deleted pre-plan for {name}.", "success")
     return redirect(url_for("main.occupancy_list"))
+
+
+# --- pre-plan review (stub) + department announcements -----------------------
+
+@main_bp.post("/occupancies/<int:occ_id>/submit-review")
+@login_required
+def occupancy_submit_review(occ_id):
+    """Stub: record that a pre-plan was submitted to a reviewer. The full review
+    workflow (reviewer notifications, approve / request-changes) is on the roadmap."""
+    occ = get_owned(Occupancy, occ_id)
+    reviewer_id = _int(request.form, "reviewer_id")
+    reviewer = None
+    if reviewer_id:
+        reviewer = User.query.filter_by(
+            id=reviewer_id, department_id=current_user.department_id).first()
+    if reviewer is None:  # "in review" must name a reviewer
+        flash("Choose a reviewer to submit this pre-plan to.", "error")
+        return redirect(url_for("main.index"))
+    occ.status = "in_review"
+    occ.submitted_to_id = reviewer.id
+    occ.submitted_at = datetime.now(timezone.utc)
+    db.session.commit()
+    flash("Submitted for review (the full review workflow is coming soon).", "success")
+    return redirect(url_for("main.index"))
+
+
+@main_bp.post("/announcements")
+@admin_required
+def announcement_create():
+    body = _str(request.form, "body")
+    if not body:
+        flash("Announcement text is required.", "error")
+    else:
+        db.session.add(Announcement(department_id=current_user.department_id,
+                                    author_id=current_user.id, body=body))
+        db.session.commit()
+        flash("Announcement posted.", "success")
+    return redirect(url_for("main.index"))
+
+
+@main_bp.post("/announcements/<int:ann_id>/delete")
+@admin_required
+def announcement_delete(ann_id):
+    ann = Announcement.query.filter_by(
+        id=ann_id, department_id=current_user.department_id).first_or_404()
+    db.session.delete(ann)
+    db.session.commit()
+    flash("Announcement removed.", "success")
+    return redirect(url_for("main.index"))
 
 
 # --- contacts (nested under an occupancy) ------------------------------------

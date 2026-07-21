@@ -119,6 +119,41 @@ a:hover { text-decoration: underline; }
 }
 .sandbox-banner a { color: var(--red); font-weight: 600; }
 
+/* --- dashboard (private home) --- */
+.dash-head { display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.dash-head h1 { margin: 0; }
+.dash-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; align-items: start; }
+@media (max-width: 800px) { .dash-grid { grid-template-columns: 1fr; } }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 1rem 1.1rem; margin-bottom: 1rem; }
+.card h2 { margin: 0 0 .7rem; font-size: 1rem; }
+th[data-sort] { user-select: none; }
+th[data-sort].sort-asc::after { content: " \25B2"; font-size: .7em; }
+th[data-sort].sort-desc::after { content: " \25BC"; font-size: .7em; }
+.status { display: inline-block; padding: .1rem .5rem; border-radius: 999px;
+  font-size: .72rem; font-weight: 700; white-space: nowrap; }
+.status-draft { background: #f1f3f5; color: #495057; }
+.status-in_review { background: #fff3bf; color: #856404; }
+.status-approved { background: #d3f9d8; color: #2b8a3e; }
+.status-needs_changes { background: #ffe3e3; color: #c92a2a; }
+.ann-form { display: grid; gap: .4rem; margin-bottom: .9rem; }
+.ann-form textarea { width: 100%; padding: .45rem .55rem; border: 1px solid var(--line);
+  border-radius: var(--radius); font: inherit; resize: vertical; }
+.ann-list, .activity { list-style: none; margin: 0; padding: 0; display: grid; gap: .8rem; }
+.ann-list li p { margin: 0 0 .25rem; }
+.ann-meta { display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  color: var(--muted); font-size: .78rem; }
+.ann-meta form, .dash-actions form { margin: 0; }
+.activity li { display: flex; flex-direction: column; }
+.activity li .subtle { font-size: .78rem; }
+.submit-review summary { display: inline-block; list-style: none; cursor: pointer; }
+.submit-review summary::-webkit-details-marker { display: none; }
+.submit-review[open] summary { margin-bottom: .4rem; }
+.submit-review form { display: flex; gap: .3rem; align-items: center; flex-wrap: wrap; }
+.submit-review select { padding: .25rem; border: 1px solid var(--line);
+  border-radius: var(--radius); font: inherit; font-size: .8rem; }
+
 /* --- flash messages --- */
 .flashes { margin-bottom: 1rem; display: grid; gap: .5rem; }
 .flash { padding: .6rem .9rem; border-radius: var(--radius); border-left: 4px solid; background: #fff; box-shadow: var(--shadow); }

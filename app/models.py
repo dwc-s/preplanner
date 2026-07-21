@@ -89,6 +89,10 @@ HAZARD_SEVERITIES = ["Low", "Medium", "High", "Critical"]
 
 USER_ROLES = ["admin", "member"]
 
+# Pre-plan review lifecycle (Occupancy.status). The review workflow itself is a
+# stub for now — these drive the dashboard badges and the "submit for review" action.
+PREPLAN_STATUSES = ["draft", "in_review", "approved", "needs_changes"]
+
 # Fire-service ranks, listed most-senior first (drives roster ordering).
 FIRE_RANKS = [
     "Chief",
@@ -257,8 +261,19 @@ class Occupancy(db.Model):
     created_at = db.Column(db.DateTime, default=_utcnow)
     updated_at = db.Column(db.DateTime, default=_utcnow, onupdate=_utcnow)
 
+    # Ownership + review workflow (see PREPLAN_STATUSES). created_by is the author;
+    # submitted_to is the reviewer a plan was sent to. The review process itself is a
+    # stub — these fields feed the dashboard and "submit for review" action.
+    created_by = db.Column(db.Integer, db.ForeignKey("app_user.id"))
+    status = db.Column(db.String(20), nullable=False, default="draft")
+    submitted_to_id = db.Column(db.Integer, db.ForeignKey("app_user.id"))
+    submitted_at = db.Column(db.DateTime)
+
     # Relationships
     department = db.relationship("Department")
+    # Two FKs point at app_user, so disambiguate with foreign_keys.
+    author = db.relationship("User", foreign_keys=[created_by])
+    reviewer = db.relationship("User", foreign_keys=[submitted_to_id])
     contacts = db.relationship(
         "Contact", backref="occupancy",
         cascade="all, delete-orphan", order_by="Contact.name",
@@ -567,3 +582,24 @@ class Deletion(db.Model):
     entity_type = db.Column(db.String(40), nullable=False)  # e.g. "map_feature"
     uuid = db.Column(db.String(36), nullable=False, index=True)
     deleted_at = db.Column(db.DateTime, default=_utcnow, index=True)
+
+
+# --- Department announcements ------------------------------------------------
+
+class Announcement(db.Model):
+    """A short notice an admin posts to the whole department; shown on the dashboard."""
+
+    __tablename__ = "announcement"
+
+    id = db.Column(db.Integer, primary_key=True)
+    department_id = db.Column(
+        db.Integer, db.ForeignKey("department.id"), nullable=False, index=True
+    )
+    author_id = db.Column(db.Integer, db.ForeignKey("app_user.id"))
+    body = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=_utcnow, index=True)
+
+    author = db.relationship("User")
+
+    def __repr__(self):
+        return f"<Announcement {self.id} dept={self.department_id}>"
