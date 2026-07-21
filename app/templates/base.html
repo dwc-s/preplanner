@@ -18,7 +18,10 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="{{ url_for('main.index') }}">🚒&nbsp;Pre-Planner</a>
+    <a class="brand" href="{{ url_for('main.index') }}">
+      <img class="brand-logo" src="{{ url_for('static', filename='images/preplanner-logo.png') }}"
+           alt="Pre-Planner" width="1122" height="258">
+    </a>
     {% if current_user.is_authenticated %}
     <nav class="nav">
       <a href="{{ url_for('main.index') }}">Map</a>
@@ -38,8 +41,22 @@
         <button type="submit">Sign out</button>
       </form>
     </nav>
+    {% else %}
+    <nav class="nav">
+      <form method="post" action="{{ url_for('main.sandbox_start') }}" class="nav-inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit">Try the sandbox</button>
+      </form>
+      <a href="{{ url_for('auth.login') }}">Sign in</a>
+    </nav>
     {% endif %}
   </header>
+  {% if current_user.is_authenticated and current_user.department.is_sandbox %}
+  <div class="sandbox-banner">
+    <span>🧪 <strong>Sandbox</strong> — explore freely; changes reset periodically.</span>
+    <a href="{{ url_for('auth.register') }}">Sign up to keep your work →</a>
+  </div>
+  {% endif %}
 
   <main class="{% block main_class %}container{% endblock %}">
     {% with messages = get_flashed_messages(with_categories=true) %}

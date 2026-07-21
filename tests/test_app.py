@@ -93,6 +93,109 @@ def test_bad_password_rejected(app):
     assert c.get("/occupancies").status_code == 302
 
 
+# --- public landing + sandbox ------------------------------------------------
+
+def test_landing_is_public(app):
+    """Logged-out visitors get a public splash (not the login wall) at /."""
+    r = app.test_client().get("/")
+    assert r.status_code == 200
+    assert "/sandbox" in r.get_data(as_text=True)  # the "Try the sandbox" CTA
+
+
+def test_register_stub_is_public(app):
+    r = app.test_client().get("/register")
+    assert r.status_code == 200
+    assert "coming soon" in r.get_data(as_text=True).lower()
+
+
+def test_sandbox_get_creates_nothing(app):
+    """A bare GET (crawler/prefetch) must not spin up a workspace — it redirects."""
+    c = app.test_client()
+    r = c.get("/sandbox")
+    assert r.status_code == 302
+    with app.app_context():
+        assert Department.query.filter_by(is_sandbox=True).count() == 0
+
+
+def test_sandbox_start_creates_seeded_workspace(app):
+    c = app.test_client()
+    r = c.post("/sandbox")
+    assert r.status_code == 302  # redirects into the app
+    with app.app_context():
+        depts = Department.query.filter_by(is_sandbox=True).all()
+        assert len(depts) == 1
+        dept = depts[0]
+        assert Occupancy.query.filter_by(department_id=dept.id).count() > 0
+        assert Hydrant.query.filter_by(department_id=dept.id).count() > 0
+        user = User.query.filter_by(department_id=dept.id).first()
+        assert user is not None and user.is_admin  # admin so every feature is explorable
+    # the visitor is now signed in — the map renders at /
+    assert c.get("/").status_code == 200
+
+
+def test_sandbox_blocks_file_uploads(app):
+    c = app.test_client()
+    c.post("/sandbox")  # signs in as a sandbox admin
+    with app.app_context():
+        dept = Department.query.filter_by(is_sandbox=True).first()
+        occ_id = Occupancy.query.filter_by(department_id=dept.id).first().id
+        dept_id = dept.id
+        floorplans_before = FloorPlan.query.count()
+
+    # Floor-plan image upload is blocked.
+    r = c.post(f"/occupancies/{occ_id}/floorplans",
+               data={"image": (io.BytesIO(b"not-really-an-image"), "x.png")},
+               content_type="multipart/form-data", follow_redirects=True)
+    assert r.status_code == 200
+    assert "sandbox" in r.get_data(as_text=True).lower()
+
+    # GIS import is blocked too.
+    r2 = c.post("/overlays/import",
+                data={"files": (io.BytesIO(b'{"type":"FeatureCollection","features":[]}'),
+                                "x.geojson")},
+                content_type="multipart/form-data", follow_redirects=True)
+    assert r2.status_code == 200
+    assert "sandbox" in r2.get_data(as_text=True).lower()
+
+    with app.app_context():
+        assert FloorPlan.query.count() == floorplans_before        # nothing uploaded
+        assert MapFeature.query.filter_by(department_id=dept_id).count() == 0  # nothing imported
+
+
+def test_purge_expired_sandboxes(app):
+    from datetime import datetime, timezone, timedelta
+    from app.sandbox import purge_expired_sandboxes
+    from seed import seed_department
+
+    with app.app_context():
+        # A real department must survive the purge.
+        real = Department(name="Real FD")
+        db.session.add(real)
+        db.session.flush()
+        seed_department(real)
+
+        # An aged sandbox (with data + a user) must be removed entirely.
+        old = Department(name="Sandbox old", is_sandbox=True)
+        db.session.add(old)
+        db.session.flush()
+        u = User(email="sb@sandbox.invalid", role="admin", department_id=old.id)
+        u.set_password("x")
+        db.session.add(u)
+        seed_department(old)
+        db.session.commit()
+        old.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=48)
+        db.session.commit()
+        old_id, real_id = old.id, real.id
+
+        assert purge_expired_sandboxes(max_age_hours=24) == 1
+        assert db.session.get(Department, old_id) is None
+        assert Occupancy.query.filter_by(department_id=old_id).count() == 0
+        assert User.query.filter_by(department_id=old_id).count() == 0
+        # untouched real department
+        assert db.session.get(Department, real_id) is not None
+        assert Occupancy.query.filter_by(department_id=real_id).count() > 0
+
+
 # --- occupancy CRUD (scoped to the logged-in department) ---------------------
 
 def test_empty_api_is_valid_geojson(client):

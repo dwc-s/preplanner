@@ -10,6 +10,21 @@ Pre-Planner has not yet cut a numbered release — everything below is on the
 
 ### Added
 
+**Public landing & explore-first sandbox**
+- A public **splash / landing page** at `/` for logged-out visitors — the
+  Pre-Planner logo, a short "about" blurb, and clear calls to action (try the
+  sandbox, sign in, sign up). Signed-in members still get the map at `/`.
+- A one-click **sandbox** so anyone can try the full app before signing up: it
+  spins up a private, pre-seeded workspace, signs the visitor in, and lets them
+  create pre-plans, draw on the map, add hydrants and symbols, and more. Each
+  visitor is isolated by the usual per-department scoping and the workspace is
+  auto-purged after a TTL (opportunistically, plus a `flask purge-sandboxes` CLI
+  for cron). File uploads (floor-plan images, GIS imports) are disabled in the
+  sandbox to avoid hosting anonymous uploads; everything else is usable. A banner
+  marks sandbox mode and links to sign-up.
+- A **sign-up** entry point (`/register`) — a placeholder for now while
+  departments are still onboarded manually.
+
 **Pre-planning core**
 - Occupancy pre-plans — create, edit, search, delete: construction type,
   condition, fire-protection systems, Knox Box, gate/alarm codes, annunciator,

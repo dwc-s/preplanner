@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Pre-Planner — pre-incident planning for the fire service{% endblock %}
+
+{% block content %}
+<section class="landing">
+  <img class="landing-splash"
+       src="{{ url_for('static', filename='images/preplanner-splash.svg') }}"
+       alt="Pre-Planner — Ready before the alarm.">
+
+  <p class="landing-lede">Free, open-source pre-incident planning built for
+    volunteer and call fire departments.</p>
+
+  <p class="landing-about">Map hydrants, buildings, and access routes; keep
+    construction, hazard, and contact details for every occupancy; and drop
+    fire-service symbols, arrows, and measurements on an interactive map. It works
+    offline in the field and syncs when you're back online — no subscription, no
+    lock-in.</p>
+
+  <div class="landing-actions">
+    <form method="post" action="{{ url_for('main.sandbox_start') }}" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-primary btn-lg">Try the sandbox →</button>
+    </form>
+    <a class="btn btn-lg" href="{{ url_for('auth.login') }}">Sign in</a>
+    <a class="btn btn-lg" href="{{ url_for('auth.register') }}">Sign up</a>
+  </div>
+
+  <p class="landing-note">No account needed to explore — the sandbox is a full,
+    private demo you can freely play with (it resets periodically).</p>
+</section>
+{% endblock %}

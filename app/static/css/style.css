@@ -20,6 +20,11 @@ body {
   font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: var(--ink);
   background: var(--bg);
+  /* Column layout so the topbar (any height, wraps on mobile) + optional sandbox
+     banner stack and the map fills the rest — no hardcoded header-height offset. */
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
 }
 
 a { color: var(--red); text-decoration: none; }
@@ -34,8 +39,11 @@ a:hover { text-decoration: underline; }
   box-shadow: var(--shadow);
   position: sticky; top: 0; z-index: 1000;
 }
-.brand { color: #fff; font-weight: 700; font-size: 1.1rem; }
+/* Logo sits on a white plate so its red wordmark/mark keep contrast on the red bar. */
+.brand { display: inline-flex; align-items: center; padding: 4px 9px; background: #fff;
+  border-radius: var(--radius); box-shadow: 0 1px 2px rgba(0,0,0,.18); }
 .brand:hover { text-decoration: none; }
+.brand-logo { display: block; height: 32px; width: auto; }
 .nav { display: flex; align-items: center; gap: .25rem; margin-left: auto; flex-wrap: wrap; }
 .nav a { color: #fff; padding: .4rem .7rem; border-radius: var(--radius); }
 .nav a:hover { background: rgba(255,255,255,.15); text-decoration: none; }
@@ -56,8 +64,8 @@ a:hover { text-decoration: underline; }
 .auth-card .btn-primary { width: 100%; padding: .6rem; }
 
 .container { max-width: 1080px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
-.full { position: absolute; inset: 52px 0 0 0; }
-#map { width: 100%; height: 100%; }
+.full { flex: 1 1 auto; min-height: 0; display: flex; }
+#map { flex: 1 1 auto; min-height: 0; width: 100%; }
 
 /* --- headings --- */
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
@@ -79,6 +87,37 @@ a:hover { text-decoration: underline; }
 .btn-danger:hover { background: var(--danger); color: #fff; }
 .btn-ghost { border-color: transparent; background: transparent; }
 .btn-sm { padding: .2rem .45rem; font-size: .8rem; }
+.btn-lg { padding: .7rem 1.3rem; font-size: 1rem; }
+
+/* --- public landing / splash --- */
+.landing { max-width: 680px; margin: 1.5rem auto 3rem; text-align: center; }
+.landing-splash { display: block; width: 100%; max-width: 540px; height: auto;
+  margin: 0 auto .25rem; }
+.landing-lede { font-size: 1.2rem; font-weight: 600; color: var(--ink);
+  margin: .25rem auto .5rem; max-width: 40ch; }
+.landing-about { color: var(--muted); line-height: 1.65; margin: 0 auto 1.6rem;
+  max-width: 62ch; }
+.landing-actions { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; }
+.landing-note { color: var(--muted); font-size: .85rem; margin: 1.3rem auto 0;
+  max-width: 48ch; }
+.register-note { margin: 1.1rem 0 1.3rem; color: var(--muted); line-height: 1.6; }
+/* "Try the sandbox" is a POST form (creating a workspace must not be a GET); keep
+   the wrapping form from disturbing the button row / nav layout. */
+.inline-form { margin: 0; display: inline-flex; }
+.nav-inline-form { display: inline; margin: 0; }
+.nav-inline-form button { color: #fff; background: transparent; border: 0;
+  padding: .4rem .7rem; border-radius: var(--radius); cursor: pointer; font: inherit; }
+.nav-inline-form button:hover { background: rgba(255,255,255,.15); }
+
+/* --- sandbox mode banner: a full-width bar in normal flow, right below the
+   topbar (so it never hides behind a wrapped topbar or the map) --- */
+.sandbox-banner {
+  display: flex; gap: .35rem .8rem; align-items: center; justify-content: center;
+  flex-wrap: wrap; text-align: center;
+  background: #fff8e6; color: #7a5b00; border-bottom: 1px solid #f2d98a;
+  padding: .45rem .9rem; font-size: .85rem; line-height: 1.3;
+}
+.sandbox-banner a { color: var(--red); font-weight: 600; }
 
 /* --- flash messages --- */
 .flashes { margin-bottom: 1rem; display: grid; gap: .5rem; }

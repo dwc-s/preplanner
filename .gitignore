@@ -21,6 +21,12 @@ app/static/uploads/
 # Local GIS source data (large rasters/shapefiles, not for the repo)
 GIS Data/
 
+# Brand-source assets (logos, splash, favicons). The two files the app actually
+# serves live in app/static/images/ and ARE tracked; this master set is kept out so
+# anyone self-hosting this AGPL app supplies their own branding. Root-anchored so it
+# does NOT match app/static/images/ or vendored image folders.
+/images/
+
 # OS / editor
 .DS_Store
 *.swp

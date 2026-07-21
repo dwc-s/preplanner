@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Sign up · Pre-Planner{% endblock %}
+
+{% block content %}
+  <div class="auth-card">
+    <h1>Sign up</h1>
+    <p class="subtle">Bring your department onto Pre-Planner</p>
+    <p class="register-note">Public sign-up is coming soon. For now, departments are
+      onboarded manually — in the meantime you can explore everything the app does in
+      the sandbox, no account required.</p>
+    <form method="post" action="{{ url_for('main.sandbox_start') }}" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-primary">Try the sandbox</button>
+    </form>
+    <p class="hint"><a href="{{ url_for('main.index') }}">← Back to home</a></p>
+  </div>
+{% endblock %}

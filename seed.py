@@ -15,22 +15,10 @@ DEMO_EMAIL = "admin@example.com"
 DEMO_PASSWORD = "changeme"
 
 
-def seed_database():
-    if Occupancy.query.count() > 0:
-        return 0
-
-    # A demo department + admin so there's something to log in as.
-    dept = Department.query.filter_by(name=DEMO_DEPARTMENT).first()
-    if dept is None:
-        dept = Department(name=DEMO_DEPARTMENT)
-        db.session.add(dept)
-        db.session.flush()  # assign dept.id
-    if not User.query.filter_by(email=DEMO_EMAIL).first():
-        admin = User(email=DEMO_EMAIL, name="Demo Admin",
-                     role="admin", department_id=dept.id)
-        admin.set_password(DEMO_PASSWORD)
-        db.session.add(admin)
-
+def build_sample_records():
+    """Build the demo occupancies (with their contacts/hazards) and hydrants,
+    unstamped by department. Reused by the one-time demo seed and by every sandbox
+    workspace (see app/sandbox.py)."""
     riverside = Occupancy(
         name="Riverside Elementary School", address="120 School St",
         city="Montpelier", state="VT", zip_code="05602",
@@ -152,13 +140,40 @@ def seed_database():
                 in_service=False, notes="Tagged out — barrel drain frozen."),
     ]
 
-    # Stamp every sample record with the demo department.
+    return occupancies, hydrants
+
+
+def seed_department(dept):
+    """Populate ``dept`` with the sample pre-plans and hydrants. Adds them to the
+    session but does not commit — the caller controls the transaction."""
+    occupancies, hydrants = build_sample_records()
     for record in occupancies + hydrants:
         record.department_id = dept.id
-
     db.session.add_all(occupancies + hydrants)
-    db.session.commit()
     return len(occupancies) + len(hydrants)
+
+
+def seed_database():
+    """One-time demo seed: a Montpelier department + admin, then the sample data.
+    Idempotent — does nothing once any occupancy exists."""
+    if Occupancy.query.count() > 0:
+        return 0
+
+    # A demo department + admin so there's something to log in as.
+    dept = Department.query.filter_by(name=DEMO_DEPARTMENT).first()
+    if dept is None:
+        dept = Department(name=DEMO_DEPARTMENT)
+        db.session.add(dept)
+        db.session.flush()  # assign dept.id
+    if not User.query.filter_by(email=DEMO_EMAIL).first():
+        admin = User(email=DEMO_EMAIL, name="Demo Admin",
+                     role="admin", department_id=dept.id)
+        admin.set_password(DEMO_PASSWORD)
+        db.session.add(admin)
+
+    n = seed_department(dept)
+    db.session.commit()
+    return n
 
 
 if __name__ == "__main__":

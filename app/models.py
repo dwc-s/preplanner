@@ -148,6 +148,9 @@ class Department(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False, unique=True)
     created_at = db.Column(db.DateTime, default=_utcnow)
+    # Ephemeral, no-signup demo workspaces: isolated per visitor and purged after a
+    # TTL (see app/sandbox.py). Real departments leave this False.
+    is_sandbox = db.Column(db.Boolean, nullable=False, default=False)
 
     users = db.relationship(
         "User", backref="department", cascade="all, delete-orphan"

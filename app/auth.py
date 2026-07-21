@@ -1,8 +1,10 @@
 """Authentication and user management.
 
-Accounts are admin-created only (no public registration): the first admin per
-department is bootstrapped with ``flask create-admin``, and department admins
-add their own crew here. All data is behind login — nothing is public.
+Accounts are admin-created only (public sign-up is still a stub — see ``register``):
+the first admin per department is bootstrapped with ``flask create-admin``, and
+department admins add their own crew here. Real department data stays behind login
+and per-department scoping; the only public surfaces are the splash landing, the
+sign-up stub, and the throwaway sandbox (see app/sandbox.py).
 """
 import secrets
 import string
@@ -59,12 +61,21 @@ def login():
     return render_template("login.html")
 
 
+@auth_bp.get("/register")
+def register():
+    """Public sign-up isn't open yet — a placeholder linked from the splash so the
+    entry point exists while departments are still onboarded manually."""
+    if current_user.is_authenticated:
+        return redirect(url_for("main.index"))
+    return render_template("register.html")
+
+
 @auth_bp.post("/logout")
 @login_required
 def logout():
     logout_user()
     flash("Signed out.", "success")
-    return redirect(url_for("auth.login"))
+    return redirect(url_for("main.index"))
 
 
 # --- User management (admin only, scoped to the admin's own department) ------

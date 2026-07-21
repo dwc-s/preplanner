@@ -10,7 +10,7 @@
  * Writes (POST/PUT/DELETE) are passed straight through — offline editing with a
  * sync queue is intentionally out of scope for this version.
  */
-const APP_CACHE = "preplanner-shell-v13";
+const APP_CACHE = "preplanner-shell-v16";
 const TILE_CACHE = "preplanner-tiles-v1";
 const TILE_LIMIT = 600;
 
@@ -35,6 +35,8 @@ const SHELL = [
   "/static/vendor/geoman/leaflet-geoman.min.js",
   "/static/vendor/annotorious/annotorious.css",
   "/static/vendor/annotorious/annotorious.js",
+  "/static/images/preplanner-logo.png",
+  "/static/images/preplanner-splash.svg",
   "/static/icons/icon-192.png",
   "/static/icons/icon-512.png",
   "/static/manifest.webmanifest"

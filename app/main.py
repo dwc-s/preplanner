@@ -8,22 +8,24 @@ Every route is login-gated and department-scoped via the helpers in scoping.py.
 """
 import json
 import os
+import secrets
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for, flash,
     abort, send_file, jsonify, current_app
 )
-from flask_login import login_required, current_user
+from flask_login import login_required, current_user, login_user
 from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 
-from .extensions import db
+from .extensions import db, limiter
 from .models import (
-    Occupancy, Contact, Hazard, Hydrant, FloorPlan, WmsLayer, MapFeature,
-    MAP_FEATURE_CATEGORIES,
+    Department, User, Occupancy, Contact, Hazard, Hydrant, FloorPlan, WmsLayer,
+    MapFeature, MAP_FEATURE_CATEGORIES,
 )
 from .scoping import dept_query, get_owned, get_owned_child
 from .auth import admin_required
+from .sandbox import sandbox_forbidden, purge_expired_sandboxes
 from . import gis_import
 
 ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "webp", "gif"}
@@ -88,12 +90,52 @@ def _populate_occupancy(occ, form):
         setattr(occ, f, _bool(form, f))
 
 
-# --- map ---------------------------------------------------------------------
+# --- landing / map -----------------------------------------------------------
 
 @main_bp.get("/")
-@login_required
 def index():
-    return render_template("index.html")
+    """Logged-out visitors get the public splash; members get the map."""
+    if current_user.is_authenticated:
+        return render_template("index.html")
+    return render_template("landing.html")
+
+
+@main_bp.get("/sandbox")
+def sandbox_redirect():
+    """A bare GET must never create anything — crawlers, link prefetchers, and
+    typed URLs would otherwise spawn throwaway departments. The landing CTA POSTs;
+    send GETs to the landing instead."""
+    return redirect(url_for("main.index"))
+
+
+@main_bp.post("/sandbox")
+@limiter.limit("6 per hour; 30 per day")
+def sandbox_start():
+    """Spin up a private, throwaway workspace and log the visitor into it so they can
+    explore the full app without signing up. Isolated per visitor by the usual
+    department scoping and purged after a TTL (see app/sandbox.py)."""
+    if current_user.is_authenticated:
+        return redirect(url_for("main.index"))
+    try:
+        purge_expired_sandboxes()  # opportunistic cleanup; must never block a sandbox
+    except Exception:
+        db.session.rollback()
+    from seed import seed_department  # local import avoids a seed<->app import cycle
+
+    token = secrets.token_hex(4)  # 32-bit: keeps the dept name short; ample given the
+    #                              TTL purge keeps the live sandbox count tiny
+    dept = Department(name=f"Sandbox {token}", is_sandbox=True)
+    db.session.add(dept)
+    db.session.flush()  # assign dept.id
+    user = User(email=f"sandbox-{token}@sandbox.invalid", name="Sandbox User",
+                role="admin", department_id=dept.id)
+    user.set_password(secrets.token_urlsafe(16))  # random; never surfaced
+    db.session.add(user)
+    seed_department(dept)
+    db.session.commit()
+
+    login_user(user)  # the persistent sandbox banner (base.html) is the welcome
+    return redirect(url_for("main.index"))
 
 
 @main_bp.get("/conflicts")
@@ -311,6 +353,7 @@ def _floorplan_dir(occ):
 
 @main_bp.post("/occupancies/<int:occ_id>/floorplans")
 @login_required
+@sandbox_forbidden
 def floorplan_upload(occ_id):
     occ = get_owned(Occupancy, occ_id)
     file = request.files.get("image")
@@ -544,6 +587,7 @@ def overlay_delete(layer_id):
 
 @main_bp.post("/overlays/import")
 @admin_required
+@sandbox_forbidden
 def gis_import_upload():
     uploads = [f for f in request.files.getlist("files") if f and f.filename]
     if not uploads:  # backward-compat with the old single-file field name

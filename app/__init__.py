@@ -128,3 +128,12 @@ def _register_cli(app):
         from seed import seed_database
         count = seed_database()
         click.echo(f"Seeded {count} records." if count else "Already seeded.")
+
+    @app.cli.command("purge-sandboxes")
+    @click.option("--max-age-hours", default=24, show_default=True,
+                  help="Delete sandbox workspaces older than this many hours.")
+    def purge_sandboxes(max_age_hours):
+        """Delete expired sandbox departments and all their data (wire to cron)."""
+        from .sandbox import purge_expired_sandboxes
+        n = purge_expired_sandboxes(max_age_hours)
+        click.echo(f"Purged {n} expired sandbox department(s).")
