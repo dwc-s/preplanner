@@ -287,13 +287,41 @@
     cutPolygon: false, rotateMode: false
   });
 
+  // Finish a polyline/polygon on double-click — the instinctive gesture. Geoman
+  // otherwise leaves finishOn null, so a double-click falls through to the map's
+  // zoom handler: the map lurches to max zoom mid-draw and the shape seems to
+  // vanish, which reads as the app "crashing". With finishOn:"dblclick" Geoman
+  // suppresses doubleClickZoom while drawing and restores it when the draw ends.
+  map.pm.setGlobalOptions({ finishOn: "dblclick" });
+
+  // Harden the finish path. Every draw tool keeps a hidden "Finish" action button
+  // whose handler calls Draw[shape]._finishShape(); if that tool was never started
+  // its working layer is undefined and Geoman throws "Cannot read properties of
+  // undefined (reading 'getLatLngs')", killing the map. Treat a missing working
+  // layer as nothing-to-finish rather than letting it crash.
+  ["Line", "Polygon", "Rectangle"].forEach(function (shape) {
+    var handler = map.pm.Draw[shape];
+    if (!handler || handler.__finishGuarded) return;
+    var finish = handler._finishShape;
+    handler._finishShape = function () {
+      if (!this._layer) return;
+      return finish.apply(this, arguments);
+    };
+    handler.__finishGuarded = true;
+  });
+
   map.on("pm:create", function (e) {
-    var gj = e.layer.toGeoJSON();
+    var layer = e.layer;
+    var gj = layer.toGeoJSON();  // capture geometry now; act after Geoman finishes
     var category = categoryForGeometry(gj.geometry.type);
-    var label = window.prompt("Label for this " + category + " (optional):", "") || "";
-    map.removeLayer(e.layer);  // the store copy will be rendered instead
-    Store.create("map_feature", { category: category, label: label,
-      geometry_json: JSON.stringify(gj.geometry) });
+    // Defer removal + prompt: removing the layer (or blocking on prompt) inside
+    // pm:create crashes Geoman, which still touches the layer as it finishes.
+    setTimeout(function () {
+      map.removeLayer(layer);  // the store copy will be rendered instead
+      var label = window.prompt("Label for this " + category + " (optional):", "") || "";
+      Store.create("map_feature", { category: category, label: label,
+        geometry_json: JSON.stringify(gj.geometry) });
+    }, 0);
   });
 
   map.on("pm:remove", function (e) {

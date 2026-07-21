@@ -68,12 +68,23 @@ Pre-Planner has not yet cut a numbered release — everything below is on the
   pure-Python, vendored front-end libraries, no system GDAL.
 
 ### Changed
+- Polylines and polygons now **finish on double-click** — the instinctive gesture.
+  Previously a double-click fell through to the map's zoom, so the map lurched to
+  full zoom mid-draw and the shape appeared to vanish; you had to click the first
+  vertex or the Finish button instead. Double-click zoom still works when not
+  drawing.
 - New WMS overlays default to transparent, and the form clarifies that the layers
   field takes the server's WMS *layer name* (not a display label).
 - In development (`localhost`/`127.0.0.1`) the service worker is skipped so CSS/JS
   edits appear on a plain refresh; production still gets full offline/PWA caching.
 
 ### Fixed
+- Drawing a polygon or line can no longer crash the map. Leaflet-Geoman keeps a
+  hidden "Finish" control for every draw tool; triggering one for a tool that was
+  never started left its working layer undefined and threw deep inside Geoman
+  (`Cannot read properties of undefined (reading 'getLatLngs')`), taking the whole
+  map down. The finish path now treats a missing working layer as
+  nothing-to-finish.
 - Tiled basemap overlays no longer raise the map's max zoom past the base map's
   limit (which had left the street base blank when zoomed in far).
 - A single malformed/null record in a shapefile no longer aborts the whole import.
