@@ -16,9 +16,10 @@
           <td>{{ u.email }}</td>
           <td>{{ u.name or "—" }}</td>
           <td>
-            <form method="post" action="{{ url_for('auth.user_set_rank', user_id=u.id) }}">
+            <form method="post" action="{{ url_for('auth.user_set_rank', user_id=u.id) }}"
+                  data-autosave data-autosave-compact>
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <select name="rank" onchange="this.form.submit()">
+              <select name="rank">
                 <option value="">—</option>
                 {% for r in FIRE_RANKS %}
                   <option value="{{ r }}" {% if u.rank == r %}selected{% endif %}>{{ r }}</option>
@@ -52,17 +53,18 @@
 
   <section class="card card-wide" style="margin-top:1rem;">
     <h2>Add crew member</h2>
+    {% set fv = form|default({}) %}
     <form method="post" action="{{ url_for('auth.user_create') }}" class="inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="email" name="email" placeholder="Email" required>
-      <input type="text" name="name" placeholder="Name">
+      <input type="email" name="email" placeholder="Email" value="{{ fv.get('email', '') }}" required>
+      <input type="text" name="name" placeholder="Name" value="{{ fv.get('name', '') }}">
       <select name="role">
-        <option value="member">member</option>
-        <option value="admin">admin</option>
+        <option value="member" {% if fv.get('role') != 'admin' %}selected{% endif %}>member</option>
+        <option value="admin" {% if fv.get('role') == 'admin' %}selected{% endif %}>admin</option>
       </select>
       <select name="rank">
         <option value="">Rank…</option>
-        {% for r in FIRE_RANKS %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+        {% for r in FIRE_RANKS %}<option value="{{ r }}" {% if fv.get('rank') == r %}selected{% endif %}>{{ r }}</option>{% endfor %}
       </select>
       <input type="password" name="password" placeholder="Temporary password" required>
       <button class="btn" type="submit">Add user</button>

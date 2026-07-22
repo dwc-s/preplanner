@@ -12,14 +12,13 @@ system GDAL. **Licensed AGPL-3.0.**
 
 ```bash
 git clone https://github.com/dwc-s/preplanner && cd preplanner
-python3 -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-python seed.py        # creates the schema + loads a demo department, prints a login
+./install.sh          # venv + deps + .env (generates a SECRET_KEY) + schema; offers to add an admin or demo data
+source .venv/bin/activate
 python run.py         # http://127.0.0.1:5000
 ```
 
-Or start empty (no demo data): `flask db upgrade && flask create-admin && python run.py`.
-See [Quick start](#quick-start) for details.
+`./install.sh` (macOS/Linux) is re-runnable and never clobbers an existing `.env` or
+database. Prefer manual steps, or on Windows? See [Quick start](#quick-start).
 
 ---
 
@@ -43,11 +42,16 @@ See [Quick start](#quick-start) for details.
 **Pre-plans**
 - **Occupancy pre-plans** — construction, condition, fire-protection systems,
   Knox Box, gate/alarm codes, annunciator, utility shutoffs, water supply, notes,
-  plus inline-editable **hazards** and **contacts**.
+  plus inline-editable **hazards** and **contacts**. Edits **autosave** as you type
+  (a subtle "All changes saved" cue — no Save button); the same goes for hydrants and
+  builder captions.
 - **Drag-and-drop builder** — assemble a pre-plan document from ordered **elements**
   (map · floor plans · photos · SDS · inspection reports) in your department's
   standard order; reorder by dragging. Elements come from the shared library or a
   fresh upload; SDS links out to chemicalsafety.com's search.
+- **PDF export** — download any pre-plan as a formatted PDF; photos and floor plans
+  embed inline and attached SDS/PDF documents are merged in as **appendices**
+  (pure-Python: reportlab + pypdf).
 - **Shared asset library** — upload floor plans, photos, SDS, and documents once and
   reuse them anywhere. **GPS** is read from photo EXIF, **iPhone HEIC** is transcoded
   to JPEG, and PDFs/photos are **indexed for full-text search** (image OCR runs in the
@@ -60,7 +64,8 @@ See [Quick start](#quick-start) for details.
   and custom zones as toggleable layers. Draw with [Leaflet-Geoman](https://geoman.io),
   place fire-service **symbols** (FDC, Knox, shutoffs, hazmat, command post, arrows…),
   **measure** distances, click to place **hydrants** (NFPA 291 flow-class colours),
-  and draw a footprint. The map reopens where you last left it.
+  and draw a footprint. Switch the base map — **street / satellite / topographic** —
+  from the layer control; the map reopens where you last left it.
 - **Basemaps & overlays** — one-click tiled basemaps (USGS topo/imagery, terrain
   hillshade, OpenTopoMap) plus **WMS** overlays you add by pasting a server URL and
   picking from its live layer list.
@@ -95,6 +100,21 @@ See [Quick start](#quick-start) for details.
 ## Quick start
 
 Requires **Python 3.10+**.
+
+**Easiest (macOS / Linux):**
+
+```bash
+git clone https://github.com/dwc-s/preplanner && cd preplanner
+./install.sh          # venv + deps + .env (generated SECRET_KEY) + migrations
+source .venv/bin/activate
+python run.py          # http://127.0.0.1:5000
+```
+
+`install.sh` prompts to create your first admin or load demo data, and is safe to
+re-run (it won't overwrite an existing `.env` or database). Override the interpreter
+or venv path with `PYTHON=python3.12 ./install.sh` or `VENV=/path ./install.sh`.
+
+**Manual (or Windows):**
 
 ```bash
 git clone https://github.com/dwc-s/preplanner && cd preplanner
@@ -135,11 +155,12 @@ Everything else works without it — image OCR simply waits in a queue.
 
 ```
 preplanner/
+├── install.sh             # one-command setup: venv + deps + .env (SECRET_KEY) + migrations
 ├── run.py                 # dev entry point (applies migrations, then serves)
 ├── config.py              # config: DATABASE_URL, SECRET_KEY, UPLOAD_FOLDER, limits
 ├── seed.py                # demo-data loader (also a reusable department seeder)
 ├── requirements.txt       # pure-Python deps (no system GDAL)
-├── Dockerfile             # turnkey container (migrations on start, tesseract bundled)
+├── Dockerfile             # turnkey container (migrations + SECRET_KEY on start, tesseract bundled)
 ├── .env.example           # copy to .env for prod config
 ├── migrations/            # Alembic (Flask-Migrate) migrations
 ├── app/
@@ -152,6 +173,7 @@ preplanner/
 │   ├── api.py             # JSON / GeoJSON endpoints
 │   ├── sync.py            # POST /api/sync — offline sync (apply, conflicts, delta)
 │   ├── assets.py          # asset library file pipeline (naming, GPS, text/OCR, HEIC)
+│   ├── export.py          # pre-plan PDF export (reportlab + pypdf appendix merge)
 │   ├── sandbox.py         # ephemeral demo workspaces (create + purge + upload guard)
 │   ├── gis_import.py      # pure-Python GeoJSON/KML/GPX/Shapefile parsers + reprojection
 │   ├── templates/
@@ -199,14 +221,16 @@ pip install -r requirements.txt
 pytest        # or: PYTHONPATH=. python -m pytest
 ```
 
-Covers auth + cross-tenant isolation, pre-plan CRUD, the builder/asset library
-(incl. GPS + OCR extraction), offline sync + conflicts, GIS import, and rate limits.
+Covers auth + cross-tenant isolation, pre-plan CRUD + **PDF export**, **autosave**,
+the builder/asset library (incl. GPS + OCR extraction), offline sync + conflicts,
+GIS import, form value-retention, and rate limits.
 
 ## Deployment
 
 - **Docker (turnkey):** `docker build -t preplanner .` then
-  `docker run -p 8000:8000 -e SECRET_KEY=$(openssl rand -hex 32) -v preplanner-data:/app/instance preplanner`
-  (the container migrates the DB on start; create the first admin with
+  `docker run -p 8000:8000 -v preplanner-data:/app/instance preplanner`
+  (the container migrates the DB **and generates a persistent `SECRET_KEY`** on first
+  start — pass `-e SECRET_KEY=…` to supply your own; create the first admin with
   `docker exec -it <c> flask create-admin`).
 - **PythonAnywhere + MySQL:** run `bash deploy/install_pythonanywhere.sh` — see
   [deploy/PYTHONANYWHERE.md](deploy/PYTHONANYWHERE.md).

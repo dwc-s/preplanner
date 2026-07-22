@@ -1,3 +1,21 @@
+/* PT Serif — vendored (no CDN), latin subset. Regular / italic / bold / bold-italic. */
+@font-face {
+  font-family: "PT Serif"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url("../fonts/pt-serif-regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "PT Serif"; font-style: italic; font-weight: 400; font-display: swap;
+  src: url("../fonts/pt-serif-italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "PT Serif"; font-style: normal; font-weight: 700; font-display: swap;
+  src: url("../fonts/pt-serif-bold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "PT Serif"; font-style: italic; font-weight: 700; font-display: swap;
+  src: url("../fonts/pt-serif-bolditalic.woff2") format("woff2");
+}
+
 :root {
   --red: #c0392b;
   --red-dark: #97271b;
@@ -11,13 +29,14 @@
   --danger: #c0392b;
   --radius: 8px;
   --shadow: 0 1px 3px rgba(0,0,0,.08);
+  --font-serif: "PT Serif", Georgia, "Times New Roman", serif;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font: 15px/1.55 var(--font-serif);
   color: var(--ink);
   background: var(--bg);
   /* Column layout so the topbar (any height, wraps on mobile) + optional sandbox
@@ -56,6 +75,24 @@ a:hover { text-decoration: underline; }
 .sync-status { color: rgba(255,255,255,.8); font-size: .78rem; padding: 0 .2rem; white-space: nowrap; }
 .sync-status.is-offline { color: #ffd9b3; }
 .sync-status.has-conflicts { color: #ffb3b3; font-weight: 600; }
+/* Manual sync button + status text are for offline field use (phones/tablets).
+   Hide on desktop — background sync still runs, and the autosave pill gives desktop
+   users "saved" feedback. Shown on touch devices OR narrow screens. */
+.nav-sync, .sync-status { display: none; }
+@media (hover: none) and (pointer: coarse), (max-width: 700px) {
+  .nav-sync { display: inline-block; }
+  .sync-status { display: inline; }
+}
+
+/* Autosave status pill — subtle "is my work saved?" cue on record-editing forms.
+   Replaces the need for a Save button; desktop's answer to the mobile-only sync widget. */
+.autosave-status { display: inline-flex; align-items: center; margin-left: .6rem;
+  font-size: .82rem; color: var(--muted); white-space: nowrap; transition: color .2s; }
+.autosave-status[hidden] { display: none; }
+.autosave-status[data-state="saving"] { color: var(--muted); }
+.autosave-status[data-state="saved"]  { color: var(--ok); }
+.autosave-status[data-state="error"]  { color: var(--danger); font-weight: 600; }
+.autosave-compact { margin-left: .4rem; font-size: .78rem; }
 
 /* login page */
 .auth-card { max-width: 380px; margin: 3rem auto; background: var(--card); padding: 1.5rem 1.5rem 1.25rem; border-radius: var(--radius); box-shadow: var(--shadow); }
@@ -200,7 +237,7 @@ th[data-sort].sort-desc::after { content: " \25BC"; font-size: .7em; }
 .palette-body input[type=file] { flex: 1; min-width: 0; }
 .hint-link { font-size: .82rem; color: var(--red); display: inline-block; }
 .element-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
-.element { display: flex; align-items: center; gap: .6rem; padding: .5rem .6rem;
+.element { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; padding: .5rem .6rem;
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
 .element.dragging { opacity: .45; }
 .drag-handle { cursor: grab; color: var(--muted); font-size: 1.1rem; user-select: none; }
@@ -210,6 +247,10 @@ th[data-sort].sort-desc::after { content: " \25BC"; font-size: .7em; }
 .element-icon { font-size: 1.4rem; }
 .element-thumb { width: 54px; height: 40px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
 .element form { margin: 0; }
+/* Caption wraps to its own full-width line under the element row (autosaved). */
+.element-caption { flex-basis: 100%; display: flex; align-items: center; gap: .4rem; }
+.element-caption input[type="text"] { flex: 1; font: inherit; font-size: .82rem;
+  padding: .25rem .45rem; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); }
 
 /* --- flash messages --- */
 .flashes { margin-bottom: 1rem; display: grid; gap: .5rem; }

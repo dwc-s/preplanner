@@ -1203,3 +1203,126 @@ def test_roster_visible_to_member_and_scoped(client, app):
 
 def test_roster_requires_login(app):
     assert app.test_client().get("/roster").status_code in (302, 401)
+
+
+# --- forms keep their data on a failed submit --------------------------------
+
+def test_failed_login_keeps_email(app):
+    make_dept_user(app, "Dept A", "a@example.com")
+    c = app.test_client()
+    r = c.post("/login", data={"email": "a@example.com", "password": "wrong"})
+    assert r.status_code == 200                       # re-render, not redirect
+    body = r.get_data(as_text=True)
+    assert 'value="a@example.com"' in body            # email preserved
+    assert "wrong" not in body                        # password never echoed
+
+
+def test_user_create_error_keeps_fields(client):
+    # Too-short password -> the add-user form re-renders with the entered values.
+    r = client.post("/users", data={"email": "new@example.com", "name": "New Person",
+                                    "role": "admin", "password": "short"})
+    assert r.status_code == 200
+    body = r.get_data(as_text=True)
+    assert 'value="new@example.com"' in body and 'value="New Person"' in body
+    assert "short" not in body                        # password not echoed
+
+
+def test_library_upload_error_keeps_fields(client):
+    # No file chosen -> redirect back to the library with kind/title as query params.
+    r = client.post("/library/upload", data={"kind": "photo", "title": "My Photo"})
+    assert r.status_code == 302
+    loc = r.headers["Location"]
+    assert "up_kind=photo" in loc and "up_title=My+Photo" in loc
+
+
+# --- real-time autosave on record forms --------------------------------------
+
+def test_occupancy_autosave(client):
+    client.post("/occupancies/new", data={"name": "AS Bldg", "latitude": "1", "longitude": "2"})
+    occ_id = client.get("/api/occupancies").get_json()["features"][0]["properties"]["id"]
+    r = client.post(f"/occupancies/{occ_id}/edit",
+                    data={"name": "AS Renamed", "latitude": "1", "longitude": "2"},
+                    headers={"X-Autosave": "1"})
+    assert r.status_code == 200 and r.get_json()["ok"] is True   # JSON, no redirect
+    assert b"AS Renamed" in client.get(f"/occupancies/{occ_id}").data
+    # A blank name must not be persisted (would wipe the record's name mid-edit).
+    r2 = client.post(f"/occupancies/{occ_id}/edit", data={"name": ""},
+                     headers={"X-Autosave": "1"})
+    assert r2.get_json()["ok"] is False
+    assert b"AS Renamed" in client.get(f"/occupancies/{occ_id}").data
+
+
+def test_hydrant_edit_autosave(client, app):
+    client.post("/hydrants/new", data={"label": "H-1", "latitude": "44.2",
+                                       "longitude": "-72.5", "flow_gpm": "500"})
+    with app.app_context():
+        hid = Hydrant.query.first().id
+    r = client.post(f"/hydrants/{hid}/edit",
+                    data={"label": "H-1", "latitude": "44.2", "longitude": "-72.5",
+                          "flow_gpm": "1200"}, headers={"X-Autosave": "1"})
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    with app.app_context():
+        assert db.session.get(Hydrant, hid).flow_gpm == 1200
+    # Missing coordinates -> not saved.
+    r2 = client.post(f"/hydrants/{hid}/edit", data={"label": "H-1"},
+                     headers={"X-Autosave": "1"})
+    assert r2.get_json()["ok"] is False
+
+
+def test_user_rank_autosave(client):
+    with client.application.app_context():
+        uid = User.query.filter_by(email="a@example.com").first().id
+    r = client.post(f"/users/{uid}/rank", data={"rank": "Captain"},
+                    headers={"X-Autosave": "1"})
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    with client.application.app_context():
+        assert db.session.get(User, uid).rank == "Captain"
+
+
+# --- PDF export --------------------------------------------------------------
+
+def test_export_pdf_basic(client):
+    client.post("/occupancies/new", data={"name": "Export Bldg", "latitude": "1", "longitude": "2"})
+    occ_id = client.get("/api/occupancies").get_json()["features"][0]["properties"]["id"]
+    r = client.get(f"/occupancies/{occ_id}/export.pdf")
+    assert r.status_code == 200
+    assert r.headers["Content-Type"].startswith("application/pdf")
+    assert r.data[:5] == b"%PDF-"
+    assert "export_bldg_preplan.pdf" in r.headers.get("Content-Disposition", "")
+
+
+def test_export_pdf_merges_pdf_appendix(client, app):
+    client.post("/occupancies/new", data={"name": "Appx Bldg", "latitude": "1", "longitude": "2"})
+    with app.app_context():
+        occ = Occupancy.query.filter_by(name="Appx Bldg").first()
+        occ_id, dept_id = occ.id, occ.department_id
+        uid = User.query.filter_by(email="a@example.com").first().id
+        adir = os.path.join(app.config["UPLOAD_FOLDER"], str(dept_id), "assets")
+        os.makedirs(adir, exist_ok=True)
+        from reportlab.pdfgen import canvas as rc
+        c = rc.Canvas(os.path.join(adir, "sds.pdf"))
+        c.drawString(72, 720, "SDS PAGE ONE"); c.showPage(); c.save()
+        a = Asset(department_id=dept_id, kind="sds", title="An SDS", filename="sds.pdf",
+                  content_type="application/pdf", uploaded_by=uid)
+        db.session.add(a); db.session.flush()
+        db.session.add(PreplanElement(occupancy_id=occ_id, kind="sds", asset_id=a.id, position=0))
+        db.session.commit()
+    r = client.get(f"/occupancies/{occ_id}/export.pdf")
+    assert r.status_code == 200 and r.data[:5] == b"%PDF-"
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(r.data))
+    text = "".join((p.extract_text() or "") for p in reader.pages)
+    assert "SDS PAGE ONE" in text                     # the SDS was merged as an appendix
+
+
+def test_export_pdf_cross_tenant_404(app):
+    make_dept_user(app, "Dept A", "a@example.com")
+    make_dept_user(app, "Dept B", "b@example.com")
+    ca, cb = app.test_client(), app.test_client()
+    login(ca, "a@example.com")
+    login(cb, "b@example.com")
+    ca.post("/occupancies/new", data={"name": "A Bldg", "latitude": "1", "longitude": "2"})
+    with app.app_context():
+        oid = Occupancy.query.filter_by(name="A Bldg").first().id
+    assert cb.get(f"/occupancies/{oid}/export.pdf").status_code == 404   # not yours
+    assert ca.get(f"/occupancies/{oid}/export.pdf").status_code == 200

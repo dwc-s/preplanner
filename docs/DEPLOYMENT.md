@@ -37,17 +37,21 @@ this automatically; other paths run it once).
 
 ## Option A: Docker (turnkey)
 
-The image bundles `tesseract` (for OCR) and runs migrations on start.
+The image bundles `tesseract` (for OCR), runs migrations on start, and **generates a
+persistent `SECRET_KEY`** on first boot if you don't supply one.
 
 ```bash
 docker build -t preplanner .
 docker run -d --name preplanner -p 8000:8000 \
-  -e SECRET_KEY=$(openssl rand -hex 32) \
   -v preplanner-data:/app/instance \
   preplanner
 docker exec -it preplanner flask create-admin      # first admin (interactive)
 ```
 
+- **`SECRET_KEY`** — if omitted, the entrypoint creates one and stores it at
+  `instance/.secret_key` (on the volume, so it survives restarts). Pass
+  `-e SECRET_KEY=$(openssl rand -hex 32)` to set your own (an explicit value always
+  wins).
 - The `-v …:/app/instance` volume persists the SQLite DB **and** uploaded files. To
   use an external DB instead, add `-e DATABASE_URL=…`.
 - Put a TLS-terminating reverse proxy (nginx/caddy/Traefik) in front of port 8000.
@@ -55,6 +59,10 @@ docker exec -it preplanner flask create-admin      # first admin (interactive)
   `docker exec preplanner flask ocr-pending && docker exec preplanner flask purge-sandboxes`.
 
 ## Option B: gunicorn behind a reverse proxy
+
+`./install.sh` bootstraps the venv, dependencies, a `.env` with a generated
+`SECRET_KEY`, and the schema in one step (then set `DATABASE_URL` in `.env` for an
+external DB). Or do it explicitly:
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate

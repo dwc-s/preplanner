@@ -10,7 +10,10 @@
     <h1>Build pre-plan</h1>
     <p class="subtle">{{ occupancy.name }}{% if occupancy.address %} · {{ occupancy.address }}{% endif %}</p>
   </div>
-  <a class="btn" href="{{ url_for('main.occupancy_detail', occ_id=occupancy.id) }}">← Back to pre-plan</a>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('main.occupancy_export_pdf', occ_id=occupancy.id) }}">Export PDF</a>
+    <a class="btn" href="{{ url_for('main.occupancy_detail', occ_id=occupancy.id) }}">← Back to pre-plan</a>
+  </div>
 </div>
 
 <div class="builder">
@@ -102,6 +105,13 @@
         <form method="post" action="{{ url_for('main.element_delete', element_id=el.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn btn-sm btn-ghost" type="submit" title="Remove">&times;</button>
+        </form>
+        <form class="element-caption" method="post"
+              action="{{ url_for('main.element_caption', element_id=el.id) }}"
+              data-autosave data-autosave-compact>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="text" name="caption" value="{{ el.caption or '' }}"
+                 placeholder="Caption (optional)…" draggable="false">
         </form>
       </li>
       {% endfor %}

@@ -54,9 +54,12 @@
     {% endif %}
   </div>
 
+  {# Editing an existing pre-plan autosaves (server path); the local-first client_mode
+     editor autosaves through the offline Store instead (occupancy.js); creating a new
+     one server-side keeps an explicit Save. #}
   <form id="occ-form" method="post"
         action="{{ url_for('main.occupancy_edit', occ_id=occupancy.id) if occupancy else url_for('main.occupancy_new') }}"
-        class="record-form">
+        class="record-form" {% if occupancy and not client_mode %}data-autosave{% endif %}>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <fieldset>

@@ -2,6 +2,12 @@
 
 ## Setup
 
+**Fastest** (macOS/Linux) — `./install.sh` does everything below (creates the venv,
+installs deps, writes a `.env` with a generated `SECRET_KEY`, applies migrations) and
+offers to create an admin or load demo data. Re-runnable; never clobbers `.env`/the DB.
+
+Manual:
+
 ```bash
 git clone https://github.com/dwc-s/preplanner && cd preplanner
 python3 -m venv .venv && source .venv/bin/activate
@@ -89,8 +95,15 @@ never overwrite them.
 - **Controlled vocabularies** (occupancy types, ranks, statuses, element kinds…) live
   as lists/dicts in `models.py` and are exposed to templates by the `inject_choices()`
   context processor in the factory.
-- **No front-end build step.** Vendored libraries live in `app/static/vendor/`; add
-  new ones there rather than a CDN (offline + AGPL friendliness).
+- **Autosave over Save buttons.** Record-editing forms opt into
+  [`autosave.js`](../app/static/js/autosave.js) with a `data-autosave` attribute
+  (debounced POST + `X-Autosave: 1` → route returns JSON `{ok}`); see
+  [ARCHITECTURE.md](ARCHITECTURE.md#autosave). Keep explicit buttons only for
+  publish / submit / delete actions.
+- **No front-end build step.** Vendored libraries live in `app/static/vendor/` (and the
+  PT Serif webfont in `app/static/fonts/`); add new ones there rather than a CDN
+  (offline + AGPL friendliness). Bump `APP_CACHE` in `sw.js` when shell JS/CSS/fonts
+  change so returning PWA clients refresh.
 - **Pure-Python deps only** where feasible (the app targets free hosting with no
   system libraries beyond an optional `tesseract`).
 

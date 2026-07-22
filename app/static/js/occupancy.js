@@ -56,20 +56,54 @@
     Store.subscribe(function () { if (uuid) Store.get("occupancy", uuid).then(function (r) { if (r) renderChildren(r); }); });
   });
 
-  form.addEventListener("submit", function (e) {
-    e.preventDefault();
+  // --- real-time autosave -----------------------------------------------------
+  // Edits save to the offline Store on a short debounce (no Save button needed); the
+  // shared pill (autosave.js) shows "Saving…/All changes saved". A brand-new pre-plan
+  // is created on the first edit that has a name, then updated in place — the URL is
+  // swapped to ?u=<uuid> without a reload so children (hazards/contacts) unlock.
+  var pill = window.Autosave ? window.Autosave.pill(form) : null;
+  var saveTimer = null, saving = false, dirty = false;
+
+  function doSave() {
     var data = gather();
-    if (!data.name) { alert("Name is required."); return; }
-    if (isNew) {
-      Store.create("occupancy", data).then(function (rec) {
-        location.href = "/occupancies/edit?u=" + encodeURIComponent(rec.uuid);
-      });
-    } else {
-      Store.update("occupancy", uuid, data).then(function () {
-        titleEl.textContent = data.name;
-        flash("Saved.");
-      });
+    if (!data.name) return;  // a pre-plan needs a name; wait until one is typed
+    saving = true; dirty = false;
+    if (pill) window.Autosave.saving(pill);
+    var p = isNew
+      ? Store.create("occupancy", data).then(function (rec) {
+          isNew = false; uuid = rec.uuid;
+          try { history.replaceState(null, "", "/occupancies/edit?u=" + encodeURIComponent(uuid)); } catch (e) {}
+          renderChildren(rec);
+          return rec;
+        })
+      : Store.update("occupancy", uuid, data);
+    p.then(function () {
+      saving = false;
+      titleEl.textContent = data.name;
+      if (pill) window.Autosave.saved(pill);
+      if (dirty) schedule();  // edits landed mid-save — persist them too
+    }).catch(function () {
+      saving = false;
+      if (pill) window.Autosave.error(pill);
+    });
+  }
+  function schedule() {
+    dirty = true;
+    if (saving) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(doSave, 600);
+  }
+  form.addEventListener("input", schedule);
+  form.addEventListener("change", schedule);
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();  // "Save pre-plan" just flushes the pending autosave
+    clearTimeout(saveTimer);
+    if (!gather().name) {
+      var nameEl = form.querySelector('[name="name"]');
+      if (nameEl) nameEl.focus();
+      return;
     }
+    if (!saving) doSave();
   });
 
   // --- hazards, contacts, floor plans (client-rendered) ----------------------
@@ -200,11 +234,6 @@
   }
 
   function val(id) { var el = document.getElementById(id); return el && el.value ? el.value : null; }
-  function flash(msg) {
-    var d = document.createElement("div"); d.className = "flash flash-success"; d.textContent = msg;
-    d.style.cssText = "position:fixed;top:60px;right:1rem;z-index:3000";
-    document.body.appendChild(d); setTimeout(function () { d.remove(); }, 2000);
-  }
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];

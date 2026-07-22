@@ -96,10 +96,30 @@
   var map = L.map("map", { maxZoom: 19 }).setView(
     savedView ? [savedView.lat, savedView.lng] : [44.2601, -72.5754],
     savedView ? savedView.zoom : 13);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-  }).addTo(map);
+  // Switchable base layers (radio in the layer control). Same tile sources the admin
+  // "Add basemap" presets use (main.py PRESET_BASEMAPS). Street is the default; the
+  // chosen basemap is remembered across sessions like the saved view.
+  var BASEMAP_KEY = "preplanner.basemap";
+  var baseLayers = {
+    "Street": L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }),
+    "Satellite": L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 19, maxNativeZoom: 19,
+      attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+    }),
+    "Topographic": L.tileLayer("https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 19, maxNativeZoom: 16,
+      attribution: 'Tiles &copy; <a href="https://www.usgs.gov/">USGS</a> The National Map'
+    })
+  };
+  var savedBase = null;
+  try { savedBase = localStorage.getItem(BASEMAP_KEY); } catch (e) {}
+  (baseLayers[savedBase] || baseLayers.Street).addTo(map);
+  map.on("baselayerchange", function (e) {
+    try { localStorage.setItem(BASEMAP_KEY, e.name); } catch (e2) {}
+  });
 
   function saveView() {
     try {
@@ -538,7 +558,7 @@
   }
 
   // --- layer control + WMS overlays ------------------------------------------
-  var layersControl = L.control.layers(null, {
+  var layersControl = L.control.layers(baseLayers, {
     "Occupancies": occupancyLayer, "Footprints": footprintLayer, "Hydrants": hydrantLayer,
     "Access points": accessLayer, "Routes": routeLayer, "Zones": zoneLayer, "Symbols": symbolLayer
   }, { collapsed: false }).addTo(map);

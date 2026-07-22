@@ -9,10 +9,12 @@ How Pre-Planner is built. If you're changing code, read this and then
   **Flask-Migrate** (Alembic), **Flask-Login**, **Flask-WTF** (CSRF),
   **Flask-Limiter**.
 - **Pure-Python everywhere** — GIS import uses `pyshp` + `pyproj` (no system GDAL);
-  the asset pipeline uses `Pillow` / `pypdf` / `pillow-heif`; image OCR uses
-  `pytesseract`, the one *optional* piece that shells out to a `tesseract` binary.
+  the asset pipeline uses `Pillow` / `pypdf` / `pillow-heif`; PDF export uses
+  `reportlab` (+ `pypdf` to merge appendices); image OCR uses `pytesseract`, the one
+  *optional* piece that shells out to a `tesseract` binary.
 - **Vendored front end** — Leaflet, Leaflet-Geoman, Annotorious, and Dexie are
-  checked into `app/static/vendor/`; there is no build step and no CDN.
+  checked into `app/static/vendor/`, and the **PT Serif** webfont into
+  `app/static/fonts/` (WOFF2); there is no build step and no CDN.
 - **Runs on free/modest hosting** — SQLite by default, no always-on worker required
   (background work is cron-driven), no external services.
 - **Database-agnostic** — geometry is stored as **GeoJSON text**, so the schema runs
@@ -129,6 +131,32 @@ pages (dashboard, library, builder) need a connection.
    `flask ocr-pending` task drains the queue later (a no-op without `tesseract`, so
    the queue simply waits for a capable host). `text_content` is indexed for search.
 
+## PDF export
+
+[`app/export.py`](../app/export.py) `build_preplan_pdf(occupancy) -> bytes` renders a
+pre-plan to a PDF with **reportlab** (pure-Python, no system libraries): the structured
+record, contacts/hazards tables, and the builder's `PreplanElement`s in `position`
+order. Image attachments (floor plans, photos — HEIC already transcoded at upload) are
+downscaled and **embedded inline**; attached PDFs (SDS/documents) are **merged onto the
+end as bookmarked appendices** with `pypdf`. Served by `GET /occupancies/<id>/export.pdf`
+(`get_owned`, dept-scoped) as an attachment. Online-only, like the other file features.
+
+## Autosave
+
+Record-editing forms save as the user types instead of on a Save click.
+[`app/static/js/autosave.js`](../app/static/js/autosave.js) opts a form in with a
+`data-autosave` attribute: it debounces field changes and POSTs the form to its action
+with an `X-Autosave: 1` header (plus the `X-CSRFToken`, like the builder's reorder
+fetch); the route detects the header, does a **lenient partial save**, and returns JSON
+`{ok, saved_at}` with no flash/redirect. A shared status pill (`window.Autosave`) shows
+*Saving… / All changes saved*. Wired to the server occupancy editor, `hydrant_edit`,
+`user_set_rank`, and `element_caption`; the **local-first** occupancy editor
+([occupancy.js](../app/static/js/occupancy.js)) autosaves through the offline Store
+instead (create-on-first-edit, then update) and drives the same pill. Deliberately
+**excluded**: login, file uploads, announcement *posting*, submit-for-review, and delete
+(publish/submit/destructive actions keep an explicit button). The manual sync widget is
+hidden on desktop (CSS), so the pill is desktop's "your work is saved" signal.
+
 ## Background tasks
 
 No always-on worker. Two idempotent CLI commands (registered in the factory) are
@@ -162,7 +190,8 @@ on a plain refresh.
 
 - **Auth on everything** except the public landing, the register stub, and sandbox
   creation. Per-department isolation via `scoping.py`. **CSRF** on every form + AJAX
-  write (the reorder endpoint sends `X-CSRFToken`); `/api/sync` is the one exemption.
+  write (the reorder and autosave endpoints send `X-CSRFToken`); `/api/sync` is the
+  one exemption.
 - **File serving** is authenticated + ownership-checked; uploads live outside
   `static/`. Uploads are capped (`MAX_CONTENT_LENGTH`, 5 GB) and images are
   extension-checked.

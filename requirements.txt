@@ -15,7 +15,8 @@ pyproj>=3.6                # reproject projected Shapefiles (.prj) to WGS84 (bun
 # Asset library: file naming, GPS-from-photo, and text search
 Pillow>=10.0               # image handling + EXIF GPS extraction
 pillow-heif>=0.13          # read iPhone HEIC/HEIF photos (transcoded to JPEG on upload)
-pypdf>=4.0                 # extract embedded text from PDFs (pure-Python)
+pypdf>=4.0                 # extract embedded text from PDFs + merge PDF appendices on export
+reportlab>=4.0             # generate pre-plan PDF exports (pure-Python, no system libs)
 pytesseract>=0.3           # OPTIONAL image OCR — needs the `tesseract` binary on the
 #                            host (auto-detected at runtime; skipped gracefully if absent)
 

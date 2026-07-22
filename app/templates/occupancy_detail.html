@@ -20,6 +20,7 @@
     <div class="actions">
       <a class="btn btn-primary" href="{{ url_for('main.builder', occ_id=occupancy.id) }}">Build</a>
       <a class="btn" href="{{ url_for('main.occupancy_edit', occ_id=occupancy.id) }}">Edit</a>
+      <a class="btn" href="{{ url_for('main.occupancy_export_pdf', occ_id=occupancy.id) }}">Export PDF</a>
       <form method="post" action="{{ url_for('main.occupancy_delete', occ_id=occupancy.id) }}"
             onsubmit="return confirm('Delete this pre-plan? This cannot be undone.');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

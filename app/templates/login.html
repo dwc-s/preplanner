@@ -8,7 +8,7 @@
     <form method="post" action="{{ url_for('auth.login') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="field"><span>Email</span>
-        <input type="email" name="email" autofocus required></label>
+        <input type="email" name="email" value="{{ email|default('') }}" autofocus required></label>
       <label class="field"><span>Password</span>
         <input type="password" name="password" required></label>
       <button class="btn btn-primary" type="submit">Sign in</button>

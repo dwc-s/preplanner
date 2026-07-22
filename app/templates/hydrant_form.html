@@ -1,13 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Add Hydrant · Pre-Planner{% endblock %}
+{% block title %}{{ "Edit" if hydrant else "Add" }} Hydrant · Pre-Planner{% endblock %}
 
 {% block content %}
   <div class="page-head">
-    <h1>Add Hydrant</h1>
-    <a class="btn btn-ghost" href="{{ url_for('main.hydrant_list') }}">Cancel</a>
+    <h1>{{ "Edit Hydrant" if hydrant else "Add Hydrant" }}</h1>
+    <a class="btn btn-ghost" href="{{ url_for('main.hydrant_list') }}">{{ "Done" if hydrant else "Cancel" }}</a>
   </div>
 
-  <form method="post" action="{{ url_for('main.hydrant_new') }}" class="record-form">
+  {# Editing autosaves (data-autosave); creating keeps an explicit Save. #}
+  <form method="post"
+        action="{{ url_for('main.hydrant_edit', hydrant_id=hydrant.id) if hydrant else url_for('main.hydrant_new') }}"
+        class="record-form" {% if hydrant %}data-autosave{% endif %}>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <fieldset>
       <legend>Hydrant</legend>

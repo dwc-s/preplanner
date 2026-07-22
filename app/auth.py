@@ -11,7 +11,7 @@ import string
 from functools import wraps
 
 from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, abort
+    Blueprint, render_template, request, redirect, url_for, flash, abort, jsonify
 )
 from flask_login import (
     login_user, logout_user, login_required, current_user
@@ -58,7 +58,8 @@ def login():
                 return redirect(next_url)
             return redirect(url_for("main.index"))
         flash("Invalid email or password.", "error")
-    return render_template("login.html")
+    # Keep the email on a failed attempt so it needn't be retyped (never the password).
+    return render_template("login.html", email=request.form.get("email", ""))
 
 
 @auth_bp.get("/register")
@@ -102,19 +103,26 @@ def user_create():
     if rank not in FIRE_RANKS:
         rank = None
 
+    error = None
     if not email or not password:
-        flash("Email and password are required.", "error")
+        error = "Email and password are required."
     elif len(password) < MIN_PASSWORD_LENGTH:
-        flash(f"Password must be at least {MIN_PASSWORD_LENGTH} characters.", "error")
+        error = f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
     elif User.query.filter_by(email=email).first():
-        flash("A user with that email already exists.", "error")
-    else:
-        user = User(email=email, name=name, role=role, rank=rank,
-                    department_id=current_user.department_id)
-        user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
-        flash(f"Added {email}.", "success")
+        error = "A user with that email already exists."
+    if error:
+        # Re-render with the entered values so the admin needn't retype them (the
+        # password field stays blank — never echo a password back into HTML).
+        flash(error, "error")
+        users = (User.query.filter_by(department_id=current_user.department_id)
+                 .order_by(User.email).all())
+        return render_template("users.html", users=users, form=request.form)
+    user = User(email=email, name=name, role=role, rank=rank,
+                department_id=current_user.department_id)
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+    flash(f"Added {email}.", "success")
     return redirect(url_for("auth.users_list"))
 
 
@@ -160,6 +168,8 @@ def user_set_rank(user_id):
     rank = (request.form.get("rank") or "").strip()
     user.rank = rank if rank in FIRE_RANKS else None
     db.session.commit()
+    if request.headers.get("X-Autosave") == "1":  # inline autosave, no page reload
+        return jsonify(ok=True)
     flash(f"Updated rank for {user.email}.", "success")
     return redirect(url_for("auth.users_list"))
 

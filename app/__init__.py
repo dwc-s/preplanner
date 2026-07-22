@@ -43,6 +43,15 @@ def create_app(config_object="config.Config"):
     # instance/ holds the SQLite DB and uploaded floor plans; make sure it exists.
     os.makedirs(app.instance_path, exist_ok=True)
 
+    # Sessions, flash messages, and CSRF tokens are only as safe as SECRET_KEY.
+    # Warn loudly if the throwaway dev default is still in use outside dev/test.
+    if (not app.debug and not app.testing
+            and app.config.get("SECRET_KEY") == "dev-secret-change-in-production"):
+        app.logger.warning(
+            "SECRET_KEY is the insecure default — set a strong SECRET_KEY before "
+            "production use (run ./install.sh, or see .env.example)."
+        )
+
     db.init_app(app)
     login_manager.init_app(app)
     csrf.init_app(app)

@@ -9,6 +9,13 @@
   if (!mapEl || typeof L === "undefined" || mapEl._inited) return;
   mapEl._inited = true;
 
+  // Let autosave react to map-driven edits (point/footprint) the same as typing.
+  // Suppressed during initial hydration so merely loading the form doesn't "save".
+  var ready = false;
+  function notifyChange(el) {
+    if (ready) el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
   var latInput = document.querySelector('input[name="latitude"]');
   var lonInput = document.querySelector('input[name="longitude"]');
   var fpInput = document.querySelector('input[name="footprint_geojson"]');
@@ -29,6 +36,7 @@
   function setPoint(latlng) {
     latInput.value = latlng.lat.toFixed(6);
     lonInput.value = latlng.lng.toFixed(6);
+    notifyChange(latInput);
   }
   function placeMarker(latlng) {
     if (!marker) {
@@ -66,6 +74,7 @@
   function serialize() {
     fpInput.value = footprintLayer
       ? JSON.stringify(footprintLayer.toGeoJSON().geometry) : "";
+    notifyChange(fpInput);
   }
   function track(layer) {
     footprintLayer = layer;
@@ -124,6 +133,7 @@
 
   // The map starts inside a long form; recompute size once laid out.
   setTimeout(function () { map.invalidateSize(); }, 200);
+  ready = true;  // hydration done — subsequent point/footprint edits now autosave
   }
 
   // The unified local-first page (occupancy.js) sets __occDeferMapInit and calls

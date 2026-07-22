@@ -6,6 +6,7 @@ relies on the JSON API.
 
 Every route is login-gated and department-scoped via the helpers in scoping.py.
 """
+import io
 import json
 import os
 import secrets
@@ -29,6 +30,7 @@ from .scoping import dept_query, get_owned, get_owned_child
 from .auth import admin_required
 from .sandbox import sandbox_forbidden, purge_expired_sandboxes
 from .assets import save_asset, delete_asset_file, asset_file_path, ALLOWED_ASSET_EXTS, ext_of
+from .export import build_preplan_pdf
 from . import gis_import
 
 ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "webp", "gif"}
@@ -91,6 +93,16 @@ def _populate_occupancy(occ, form):
         setattr(occ, f, _float(form, f))
     for f in _OCC_BOOL_FIELDS:
         setattr(occ, f, _bool(form, f))
+
+
+def _is_autosave():
+    """True when a request came from the client-side autosave helper (autosave.js).
+    Such requests want a JSON {ok} reply and no flash/redirect."""
+    return request.headers.get("X-Autosave") == "1"
+
+
+def _saved_ok():
+    return jsonify(ok=True, saved_at=datetime.now(timezone.utc).isoformat())
 
 
 # --- landing / dashboard / map ----------------------------------------------
@@ -221,18 +233,33 @@ def occupancy_detail(occ_id):
     return render_template("occupancy_detail.html", occupancy=occ)
 
 
+@main_bp.get("/occupancies/<int:occ_id>/export.pdf")
+@login_required
+def occupancy_export_pdf(occ_id):
+    """Download the pre-plan as a formatted PDF with attachments as appendices."""
+    occ = get_owned(Occupancy, occ_id)
+    pdf = build_preplan_pdf(occ)
+    slug = secure_filename((occ.name or "preplan").lower()) or "preplan"
+    return send_file(io.BytesIO(pdf), mimetype="application/pdf",
+                     as_attachment=True, download_name=f"{slug}_preplan.pdf")
+
+
 @main_bp.route("/occupancies/<int:occ_id>/edit", methods=["GET", "POST"])
 @login_required
 def occupancy_edit(occ_id):
     occ = get_owned(Occupancy, occ_id)
     if request.method == "POST":
         if not _str(request.form, "name"):
+            if _is_autosave():  # don't wipe the name to blank mid-edit; report it
+                return jsonify(ok=False, error="Name can't be empty."), 200
             flash("Name is required.", "error")
             return render_template(
                 "occupancy_form.html", occupancy=occ, form=request.form
             )
         _populate_occupancy(occ, request.form)
         db.session.commit()
+        if _is_autosave():  # real-time save from the editor — no redirect/flash
+            return _saved_ok()
         flash("Pre-plan updated.", "success")
         return redirect(url_for("main.occupancy_detail", occ_id=occ.id))
     return render_template("occupancy_form.html", occupancy=occ, form=occ.__dict__)
@@ -372,6 +399,19 @@ def hydrant_list():
     return render_template("hydrant_list.html", hydrants=hydrants)
 
 
+def _populate_hydrant(h, form):
+    h.label = _str(form, "label")
+    h.latitude = _float(form, "latitude")
+    h.longitude = _float(form, "longitude")
+    h.flow_gpm = _int(form, "flow_gpm")
+    h.static_pressure = _int(form, "static_pressure")
+    h.residual_pressure = _int(form, "residual_pressure")
+    h.size_inches = _str(form, "size_inches")
+    h.hydrant_type = _str(form, "hydrant_type")
+    h.in_service = _bool(form, "in_service")
+    h.notes = _str(form, "notes")
+
+
 @main_bp.route("/hydrants/new", methods=["GET", "POST"])
 @login_required
 def hydrant_new():
@@ -381,19 +421,9 @@ def hydrant_new():
         if lat is None or lon is None:
             flash("Latitude and longitude are required.", "error")
             return render_template("hydrant_form.html", form=request.form)
-        db.session.add(Hydrant(
-            department_id=current_user.department_id,
-            label=_str(request.form, "label"),
-            latitude=lat,
-            longitude=lon,
-            flow_gpm=_int(request.form, "flow_gpm"),
-            static_pressure=_int(request.form, "static_pressure"),
-            residual_pressure=_int(request.form, "residual_pressure"),
-            size_inches=_str(request.form, "size_inches"),
-            hydrant_type=_str(request.form, "hydrant_type"),
-            in_service=_bool(request.form, "in_service"),
-            notes=_str(request.form, "notes"),
-        ))
+        h = Hydrant(department_id=current_user.department_id)
+        _populate_hydrant(h, request.form)
+        db.session.add(h)
         db.session.commit()
         flash("Hydrant added.", "success")
         return redirect(url_for("main.hydrant_list"))
@@ -404,6 +434,28 @@ def hydrant_new():
         "in_service": "on",
     }
     return render_template("hydrant_form.html", form=prefill)
+
+
+@main_bp.route("/hydrants/<int:hydrant_id>/edit", methods=["GET", "POST"])
+@login_required
+def hydrant_edit(hydrant_id):
+    h = get_owned(Hydrant, hydrant_id)
+    if request.method == "POST":
+        lat = _float(request.form, "latitude")
+        lon = _float(request.form, "longitude")
+        if lat is None or lon is None:
+            msg = "Latitude and longitude are required."
+            if _is_autosave():  # don't clear coordinates mid-edit
+                return jsonify(ok=False, error=msg), 200
+            flash(msg, "error")
+            return render_template("hydrant_form.html", form=request.form, hydrant=h)
+        _populate_hydrant(h, request.form)
+        db.session.commit()
+        if _is_autosave():
+            return _saved_ok()
+        flash("Hydrant updated.", "success")
+        return redirect(url_for("main.hydrant_list"))
+    return render_template("hydrant_form.html", form=h.__dict__, hydrant=h)
 
 
 @main_bp.post("/hydrants/<int:hydrant_id>/delete")
@@ -579,24 +631,32 @@ def library_upload():
     kind = request.form.get("kind")
     if kind not in ASSET_KINDS:
         kind = "document"
-    back = request.referrer or url_for("main.library")
+    title = _str(request.form, "title")
+    occ_id = _int(request.form, "occupancy_id")
+
+    def _retry(msg):
+        # Keep the user's kind + title on error (the browser can't re-fill a file
+        # input, so the file must be re-picked). Builder uploads return to the
+        # builder; library uploads round-trip the fields as query params the upload
+        # form reads back.
+        flash(msg, "error")
+        if occ_id:
+            return redirect(request.referrer or url_for("main.library"))
+        return redirect(url_for("main.library", up_kind=kind, up_title=title))
+
     if not file or not file.filename:
-        flash("Choose a file to upload.", "error")
-        return redirect(back)
+        return _retry("Choose a file to upload.")
     if ext_of(file.filename) not in ALLOWED_ASSET_EXTS:
-        flash("Unsupported file type. Upload an image (PNG/JPG/…) or a PDF.", "error")
-        return redirect(back)
+        return _retry("Unsupported file type. Upload an image (PNG/JPG/…) or a PDF.")
     try:
         asset = save_asset(file, kind, current_user.department_id, current_user.id,
-                           title=_str(request.form, "title"))
+                           title=title)
     except ValueError as exc:  # unreadable image (e.g. corrupt HEIC)
-        flash(str(exc), "error")
-        return redirect(back)
+        return _retry(str(exc))
     note = " — location read from the photo" if asset.latitude is not None else ""
     flash(f"Uploaded “{asset.title}”{note}.", "success")
     # Uploaded from the builder? Attach it straight onto that pre-plan (only the
     # kinds the builder places — a plain "document" just lands in the library).
-    occ_id = _int(request.form, "occupancy_id")
     if occ_id and kind in ("floorplan", "photo", "sds"):
         occ = get_owned(Occupancy, occ_id)
         _append_element(occ, kind, asset_id=asset.id)
@@ -667,6 +727,18 @@ def element_delete(element_id):
     db.session.delete(el)
     db.session.commit()
     return redirect(url_for("main.builder", occ_id=occ_id))
+
+
+@main_bp.post("/elements/<int:element_id>/caption")
+@login_required
+def element_caption(element_id):
+    """Edit a builder element's caption in place (autosaved from builder.html)."""
+    el = get_owned_child(PreplanElement, element_id)
+    el.caption = _str(request.form, "caption")
+    db.session.commit()
+    if _is_autosave():
+        return _saved_ok()
+    return redirect(url_for("main.builder", occ_id=el.occupancy_id))
 
 
 @main_bp.post("/occupancies/<int:occ_id>/elements/reorder")

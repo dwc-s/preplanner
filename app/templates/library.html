@@ -10,10 +10,11 @@
   <form class="lib-upload" method="post" action="{{ url_for('main.library_upload') }}"
         enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% set up_kind = request.args.get('up_kind') %}
     <select name="kind" aria-label="Type">
-      {% for k in ASSET_KINDS %}<option value="{{ k }}">{{ ASSET_KIND_LABELS[k] }}</option>{% endfor %}
+      {% for k in ASSET_KINDS %}<option value="{{ k }}" {% if k == up_kind %}selected{% endif %}>{{ ASSET_KIND_LABELS[k] }}</option>{% endfor %}
     </select>
-    <input type="text" name="title" placeholder="Title (optional)">
+    <input type="text" name="title" placeholder="Title (optional)" value="{{ request.args.get('up_title', '') }}">
     <input type="file" name="file" accept="image/*,.heic,.heif,application/pdf" required>
     <button class="btn btn-primary" type="submit">Upload</button>
   </form>

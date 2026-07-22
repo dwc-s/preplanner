@@ -43,6 +43,10 @@ entering coordinates; draw a **building footprint** right on the form. The edito
 map also shows your department's **hydrants** (toggleable) so water supply is visible
 while you plan.
 
+**Autosave:** the editor saves **as you type** — a small *Saving… / All changes
+saved* cue appears next to the Save button, so you never have to remember to click
+Save (setting the point or drawing the footprint saves too).
+
 **Hazards & contacts** live on the pre-plan and are **edited inline** — add, edit, or
 remove without leaving the page.
 
@@ -62,8 +66,16 @@ lists element types in your department's standard order:
   chemicalsafety.com** link (opens in a new tab — their site can't be embedded).
 - **Inspection reports** — a placeholder noting where they live (external software).
 
-Added elements appear on the right as an ordered document; **drag** them to reorder.
-The order is saved automatically.
+Added elements appear on the right as an ordered document; **drag** them to reorder,
+and give each one a **caption** (it autosaves). The order is saved automatically.
+
+## Exporting a pre-plan (PDF)
+
+From a pre-plan's page (or the builder), click **Export PDF** to download a formatted
+document: the structured record, contacts, hazards, and the builder's elements in
+order. Photos and floor plans are **embedded inline**, and any attached **SDS or PDF**
+documents are **merged onto the end as appendices** (Appendix A, B, C…). It's a plain
+PDF — print it, email it, or drop it on a mobile data terminal.
 
 ## Asset library
 
@@ -93,6 +105,8 @@ zones as toggleable layers.
 - **Ruler** — measure ground distance in feet/miles.
 - **Hydrants** — click the 💧 tool, then the map, to place one (colour = NFPA 291
   flow class).
+- **Base map** — switch between **Street**, **Satellite**, and **Topographic** in the
+  layer control (top-right); your choice is remembered for next time.
 - The map **reopens where you last left it**.
 
 **Basemaps & overlays** (admins, **Layers** page):
@@ -110,6 +124,8 @@ zones as toggleable layers.
 
 The **Hydrants** page lists all department hydrants; add flow (GPM), static/residual
 pressure, size, type, and in-service status. Flow-class colours follow NFPA 291.
+**Edit** any hydrant from the list (its fields autosave), or place new ones from the
+map's 💧 tool or the *+ Add Hydrant* button.
 
 ## Review workflow
 

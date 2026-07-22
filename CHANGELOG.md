@@ -10,6 +10,28 @@ Pre-Planner has not yet cut a numbered release — everything below is on the
 
 ### Added
 
+**Exports, autosave & UX polish**
+- **PDF export** — download any pre-plan as a formatted PDF from its page or the
+  builder. The structured record, contacts, hazards, and builder elements render in
+  order; photos and floor plans embed inline; attached SDS/PDF documents are **merged
+  as appendices** (pure-Python: `reportlab` + `pypdf`).
+- **Real-time autosave** — record-editing forms (the pre-plan editor, hydrants, builder
+  captions, user rank) save **as you type** with a subtle *Saving… / All changes saved*
+  cue — no Save button. New `app/static/js/autosave.js`; publish / submit / delete
+  actions keep explicit buttons. Adds a **hydrant edit** route and inline builder
+  **caption** editing.
+- **Basemap switcher** — pick **Street / Satellite / Topographic** from the map's layer
+  control; the choice is remembered.
+- **PT Serif** is now the app-wide typeface (vendored WOFF2 under `app/static/fonts/`,
+  no CDN).
+- **Forms keep their data** on a failed submit (login email, add-user fields, library
+  upload title/kind).
+- The manual **sync** button + status are shown **only on mobile** (background sync
+  still runs everywhere; the autosave cue covers desktop).
+- **One-command install** — `./install.sh` sets up the venv, dependencies, a `.env`
+  with a generated `SECRET_KEY`, and the schema. The Docker image now also generates a
+  persistent `SECRET_KEY` on first start if none is provided.
+
 **Home dashboard & pre-plan review**
 - Signed-in members now land on a **private dashboard** at `/` instead of the map:
   recent department activity (new pre-plans), **announcements** posted by admins,
