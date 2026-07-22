@@ -249,15 +249,17 @@ def test_submit_for_review_sets_status(client, app):
                 follow_redirects=True)
     with app.app_context():
         occ = Occupancy.query.filter_by(name="Review Test Bldg").first()
+        author = User.query.filter_by(email="a@example.com").first()
         reviewer = User(email="reviewer@a.com", name="Reviewer", role="member",
-                        department_id=occ.department_id)
+                        rank="Captain", department_id=occ.department_id)
         reviewer.set_password("pw")
         db.session.add(reviewer)
+        db.session.flush()
+        author.commanding_officer_id = reviewer.id  # a non-officer routes to their CO
         db.session.commit()
         occ_id, reviewer_id = occ.id, reviewer.id
 
-    r = client.post(f"/occupancies/{occ_id}/submit-review",
-                    data={"reviewer_id": reviewer_id}, follow_redirects=True)
+    r = client.post(f"/occupancies/{occ_id}/submit-review", follow_redirects=True)
     assert r.status_code == 200
     with app.app_context():
         occ = db.session.get(Occupancy, occ_id)
@@ -278,6 +280,183 @@ def test_submit_for_review_requires_a_reviewer(client, app):
         occ = db.session.get(Occupancy, occ_id)
         assert occ.status == "draft"
         assert occ.submitted_to_id is None
+
+
+# --- roles, officer status & the review workflow -----------------------------
+
+def _login_client(app, email):
+    c = app.test_client()
+    login(c, email)
+    return c
+
+
+def _dept_with_crew(app, policy="commanding_officer"):
+    """Chief (superuser) ← Captain (officer) ← Firefighter (non-officer). Returns ids."""
+    with app.app_context():
+        dept = Department(name="Engine 1", officer_review_policy=policy)
+        db.session.add(dept)
+        db.session.flush()
+        chief = User(email="chief@e.com", role="superuser", rank="Chief", department_id=dept.id)
+        cap = User(email="cap@e.com", role="member", rank="Captain", department_id=dept.id)
+        ff = User(email="ff@e.com", role="member", rank="Firefighter", department_id=dept.id)
+        for u in (chief, cap, ff):
+            u.set_password("pw")
+        db.session.add_all([chief, cap, ff])
+        db.session.flush()
+        cap.commanding_officer_id = chief.id
+        ff.commanding_officer_id = cap.id
+        db.session.commit()
+        return {"dept": dept.id, "chief": chief.id, "cap": cap.id, "ff": ff.id}
+
+
+def _create_and_submit(app, email, name):
+    """Log in as `email`, create a pre-plan, submit it for review; return its id."""
+    c = _login_client(app, email)
+    c.post("/occupancies/new", data={"name": name}, follow_redirects=True)
+    with app.app_context():
+        occ_id = Occupancy.query.filter_by(name=name).first().id
+    c.post(f"/occupancies/{occ_id}/submit-review", follow_redirects=True)
+    return occ_id
+
+
+def test_role_and_officer_helpers(app):
+    ids = _dept_with_crew(app)
+    with app.app_context():
+        chief = db.session.get(User, ids["chief"])
+        cap = db.session.get(User, ids["cap"])
+        ff = db.session.get(User, ids["ff"])
+        assert chief.is_superuser and chief.is_admin and chief.is_officer
+        assert (not cap.is_superuser) and (not cap.is_admin) and cap.is_officer
+        assert (not ff.is_officer) and (not ff.is_admin)
+        assert db.session.get(Department, ids["dept"]).superuser().id == ids["chief"]
+
+
+def test_nonofficer_routes_to_commanding_officer(app):
+    ids = _dept_with_crew(app)
+    occ_id = _create_and_submit(app, "ff@e.com", "FF Plan")
+    with app.app_context():
+        occ = db.session.get(Occupancy, occ_id)
+        assert occ.status == "in_review"
+        assert occ.submitted_to_id == ids["cap"]  # the firefighter's CO
+
+
+def test_officer_commanding_officer_policy_routes_to_co(app):
+    ids = _dept_with_crew(app, policy="commanding_officer")
+    occ_id = _create_and_submit(app, "cap@e.com", "Cap Plan")
+    with app.app_context():
+        assert db.session.get(Occupancy, occ_id).submitted_to_id == ids["chief"]
+
+
+def test_officer_chief_policy_routes_to_chief(app):
+    ids = _dept_with_crew(app, policy="chief")
+    occ_id = _create_and_submit(app, "cap@e.com", "Chief Plan")
+    with app.app_context():
+        assert db.session.get(Occupancy, occ_id).submitted_to_id == ids["chief"]
+
+
+def test_officer_auto_approve_policy(app):
+    _dept_with_crew(app, policy="auto_approve")
+    occ_id = _create_and_submit(app, "cap@e.com", "Auto Plan")
+    with app.app_context():
+        assert db.session.get(Occupancy, occ_id).status == "approved"
+
+
+def test_nonofficer_never_auto_approved(app):
+    ids = _dept_with_crew(app, policy="auto_approve")
+    occ_id = _create_and_submit(app, "ff@e.com", "FF NoAuto")
+    with app.app_context():
+        occ = db.session.get(Occupancy, occ_id)
+        assert occ.status == "in_review" and occ.submitted_to_id == ids["cap"]
+
+
+def test_superuser_plan_auto_approved(app):
+    _dept_with_crew(app)
+    occ_id = _create_and_submit(app, "chief@e.com", "Chief Own Plan")
+    with app.app_context():
+        assert db.session.get(Occupancy, occ_id).status == "approved"
+
+
+def test_reviewer_approves_and_requests_changes(app):
+    ids = _dept_with_crew(app)
+    occ_id = _create_and_submit(app, "ff@e.com", "To Review")  # → captain's queue
+    cap = _login_client(app, "cap@e.com")
+    cap.post(f"/occupancies/{occ_id}/review/request-changes",
+             data={"note": "Add hydrants."}, follow_redirects=True)
+    with app.app_context():
+        occ = db.session.get(Occupancy, occ_id)
+        assert occ.status == "needs_changes" and occ.review_note == "Add hydrants."
+    cap.post(f"/occupancies/{occ_id}/review/approve", follow_redirects=True)
+    with app.app_context():
+        occ = db.session.get(Occupancy, occ_id)
+        assert occ.status == "approved" and occ.reviewed_by_id == ids["cap"]
+
+
+def test_only_assignee_or_superuser_can_review(app):
+    _dept_with_crew(app)
+    occ_id = _create_and_submit(app, "ff@e.com", "Guarded")  # assigned to the captain
+    author = _login_client(app, "ff@e.com")  # not the assignee, not a superuser
+    assert author.post(f"/occupancies/{occ_id}/review/approve").status_code == 403
+    chief = _login_client(app, "chief@e.com")  # a superuser may override
+    assert chief.post(f"/occupancies/{occ_id}/review/approve",
+                      follow_redirects=True).status_code == 200
+
+
+def test_only_author_can_submit_for_review(app):
+    _dept_with_crew(app)
+    ff = _login_client(app, "ff@e.com")
+    ff.post("/occupancies/new", data={"name": "FF Owned"}, follow_redirects=True)
+    with app.app_context():
+        occ_id = Occupancy.query.filter_by(name="FF Owned").first().id
+    cap = _login_client(app, "cap@e.com")  # a different user may not submit it
+    assert cap.post(f"/occupancies/{occ_id}/submit-review").status_code == 403
+    with app.app_context():
+        assert db.session.get(Occupancy, occ_id).status == "draft"
+
+
+def test_only_superuser_sets_review_policy(app):
+    ids = _dept_with_crew(app)
+    with app.app_context():  # demote the captain to a plain admin
+        db.session.get(User, ids["cap"]).role = "admin"
+        db.session.commit()
+    admin = _login_client(app, "cap@e.com")
+    assert admin.post("/preferences/review-policy",
+                      data={"officer_review_policy": "chief"}).status_code == 403
+    chief = _login_client(app, "chief@e.com")
+    chief.post("/preferences/review-policy",
+               data={"officer_review_policy": "chief"}, follow_redirects=True)
+    with app.app_context():
+        assert db.session.get(Department, ids["dept"]).officer_review_policy == "chief"
+
+
+def test_admin_cannot_grant_superuser(app):
+    ids = _dept_with_crew(app)
+    with app.app_context():
+        db.session.get(User, ids["cap"]).role = "admin"
+        db.session.commit()
+    admin = _login_client(app, "cap@e.com")
+    assert admin.post(f"/users/{ids['ff']}/role",
+                      data={"role": "superuser"}).status_code == 403
+    with app.app_context():
+        assert db.session.get(User, ids["ff"]).role == "member"
+
+
+def test_cannot_deactivate_last_superuser(app):
+    ids = _dept_with_crew(app)  # the chief is the department's only superuser
+    with app.app_context():  # make the captain an admin so they can use the toggle
+        db.session.get(User, ids["cap"]).role = "admin"
+        db.session.commit()
+    admin = _login_client(app, "cap@e.com")
+    admin.post(f"/users/{ids['chief']}/toggle", follow_redirects=True)
+    with app.app_context():
+        assert db.session.get(User, ids["chief"]).is_active is True  # still active
+
+
+def test_preferences_gates_sections_by_class(app):
+    _dept_with_crew(app)
+    chief = _login_client(app, "chief@e.com")
+    assert b"review policy" in chief.get("/preferences").data.lower()  # superuser section
+    ff = _login_client(app, "ff@e.com")
+    assert b"review policy" not in ff.get("/preferences").data.lower()
 
 
 # --- asset library + pre-plan builder ----------------------------------------
@@ -716,20 +895,21 @@ def test_password_change(client):
 
 
 def test_password_change_rejects_wrong_current(client):
+    # /account now handles the POST and redirects to Preferences; the error flashes there.
     r = client.post("/account", data={
         "current_password": "wrong", "new_password": "newpass123",
         "confirm_password": "newpass123",
-    })
+    }, follow_redirects=True)
     assert b"Current password is incorrect" in r.data
 
 
 def test_password_change_enforces_length_and_match(client):
     assert b"at least 8" in client.post("/account", data={
         "current_password": "pw", "new_password": "short", "confirm_password": "short",
-    }).data
+    }, follow_redirects=True).data
     assert b"do not match" in client.post("/account", data={
         "current_password": "pw", "new_password": "newpass123", "confirm_password": "other12345",
-    }).data
+    }, follow_redirects=True).data
 
 
 def test_user_create_enforces_min_password(client):

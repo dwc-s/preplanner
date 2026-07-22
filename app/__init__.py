@@ -94,7 +94,10 @@ def create_app(config_object="config.Config"):
             "HAZARD_SEVERITIES": models.HAZARD_SEVERITIES,
             "MAP_FEATURE_CATEGORIES": models.MAP_FEATURE_CATEGORIES,
             "FIRE_RANKS": models.FIRE_RANKS,
+            "USER_ROLES": models.USER_ROLES,
             "PREPLAN_STATUSES": models.PREPLAN_STATUSES,
+            "OFFICER_REVIEW_POLICIES": models.OFFICER_REVIEW_POLICIES,
+            "OFFICER_REVIEW_POLICY_LABELS": models.OFFICER_REVIEW_POLICY_LABELS,
             "ASSET_KINDS": models.ASSET_KINDS,
             "ASSET_KIND_LABELS": models.ASSET_KIND_LABELS,
             "PREPLAN_ELEMENT_KINDS": models.PREPLAN_ELEMENT_KINDS,
@@ -130,7 +133,9 @@ def _register_cli(app):
             dept = Department(name=dept_name)
             db.session.add(dept)
             db.session.flush()
-        user = User(email=email, name=name, role="admin", department_id=dept.id)
+        # The founding account is the department's superuser (the Chief).
+        user = User(email=email, name=name, role="superuser", rank="Chief",
+                    department_id=dept.id)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()

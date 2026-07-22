@@ -49,6 +49,7 @@
       <a href="{{ url_for('main.hydrant_list') }}" class="{{ 'active' if ep == 'main.hydrant_list' }}">Hydrants</a>
       <a href="{{ url_for('main.library') }}" class="{{ 'active' if ep == 'main.library' }}">Library</a>
       <a href="{{ url_for('auth.roster') }}" class="{{ 'active' if ep == 'auth.roster' }}">Roster</a>
+      <a href="{{ url_for('auth.preferences') }}" class="{{ 'active' if ep == 'auth.preferences' }}">Preferences</a>
       {% if current_user.is_admin %}
       <a href="{{ url_for('auth.users_list') }}" class="{{ 'active' if ep == 'auth.users_list' }}">Users</a>
       <a href="{{ url_for('main.overlays') }}" class="{{ 'active' if ep == 'main.overlays' }}">Layers</a>
@@ -59,7 +60,7 @@
         <button type="button" id="sync-now" class="nav-sync" title="Sync now">&#8635;</button>
         <span id="sync-status" class="sync-status" aria-live="polite"></span>
       </div>
-      <a href="{{ url_for('auth.account') }}" class="sidebar-user {{ 'active' if ep == 'auth.account' }}">{{ current_user.name or current_user.email }} · {{ current_user.department.name }}</a>
+      <a href="{{ url_for('auth.preferences') }}" class="sidebar-user {{ 'active' if ep == 'auth.preferences' }}">{{ current_user.name or current_user.email }} · {{ current_user.department.name }}</a>
       <form class="sidebar-logout" method="post" action="{{ url_for('auth.logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit">Sign out</button>

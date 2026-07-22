@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Preferences · Pre-Planner{% endblock %}
+
+{% block content %}
+  <div class="page-head"><h1>Preferences</h1></div>
+
+  <div class="prefs">
+    {# --- Account (everyone) --- #}
+    <section class="card">
+      <h2>Account</h2>
+      <p class="subtle">Signed in as {{ current_user.email }} — {{ current_user.department.name }}
+        · {{ current_user.role }}{% if current_user.rank %} · {{ current_user.rank }}{% endif %}
+        · {{ "Officer" if current_user.is_officer else "Non-officer" }}</p>
+      <form method="post" action="{{ url_for('auth.account') }}" class="pref-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="field"><span>Current password</span>
+          <input type="password" name="current_password" required></label>
+        <label class="field"><span>New password</span>
+          <input type="password" name="new_password" minlength="8" required></label>
+        <label class="field"><span>Confirm new password</span>
+          <input type="password" name="confirm_password" minlength="8" required></label>
+        <div><button class="btn btn-primary" type="submit">Change password</button></div>
+      </form>
+    </section>
+
+    {# --- Review policy (superuser only) --- #}
+    {% if current_user.is_superuser %}
+    <section class="card">
+      <h2>Pre-plan review policy <span class="pref-badge">Superuser</span></h2>
+      <p class="subtle">How <strong>officer</strong>-created pre-plans are routed for review.
+        Non-officers always go to their commanding officer.</p>
+      <form method="post" action="{{ url_for('auth.set_review_policy') }}" class="pref-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% for p in OFFICER_REVIEW_POLICIES %}
+        <label class="field-radio">
+          <input type="radio" name="officer_review_policy" value="{{ p }}"
+                 {% if current_user.department.officer_review_policy == p %}checked{% endif %}>
+          <span>{{ OFFICER_REVIEW_POLICY_LABELS[p] }}</span>
+        </label>
+        {% endfor %}
+        <div><button class="btn btn-primary" type="submit">Save policy</button></div>
+      </form>
+    </section>
+    {% endif %}
+
+    {# --- Class-gated placeholder (grows later) --- #}
+    {% if current_user.is_officer %}
+    <section class="card">
+      <h2>Officer settings <span class="pref-badge">Officer</span></h2>
+      <p class="subtle">More officer options are coming soon.</p>
+    </section>
+    {% else %}
+    <section class="card">
+      <h2>My settings</h2>
+      <p class="subtle">More options are coming soon. Your pre-plans are sent
+        {% if current_user.commanding_officer %}to
+          {{ current_user.commanding_officer.name or current_user.commanding_officer.email }}
+        {% else %}to your commanding officer{% endif %} for review.</p>
+    </section>
+    {% endif %}
+  </div>
+{% endblock %}

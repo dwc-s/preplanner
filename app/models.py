@@ -87,11 +87,21 @@ HAZARD_TYPES = [
 
 HAZARD_SEVERITIES = ["Low", "Medium", "High", "Critical"]
 
-USER_ROLES = ["admin", "member"]
+# Permission tiers, most-privileged first. superuser ⊃ admin ⊃ member: a superuser is
+# the department's top authority (default: the Chief) and inherits every admin power.
+USER_ROLES = ["superuser", "admin", "member"]
 
-# Pre-plan review lifecycle (Occupancy.status). The review workflow itself is a
-# stub for now — these drive the dashboard badges and the "submit for review" action.
+# Pre-plan review lifecycle (Occupancy.status).
 PREPLAN_STATUSES = ["draft", "in_review", "approved", "needs_changes"]
+
+# How officer-created pre-plans are routed for review (Department.officer_review_policy);
+# the superuser chooses. Non-officers always go to review (never auto-approved).
+OFFICER_REVIEW_POLICIES = ["commanding_officer", "chief", "auto_approve"]
+OFFICER_REVIEW_POLICY_LABELS = {
+    "commanding_officer": "Send to the officer's commanding officer",
+    "chief": "Send to the chief",
+    "auto_approve": "Automatically approved (no review)",
+}
 
 # Shared asset library (Asset.kind) and the pre-plan builder.
 ASSET_KINDS = ["floorplan", "photo", "sds", "document"]
@@ -116,6 +126,10 @@ FIRE_RANKS = [
     "Firefighter",
     "Probationary Firefighter",
 ]
+
+# Officer ranks (the command ranks) — drives officer-vs-non-officer review routing and
+# preference gating. Anyone below Lieutenant, or with no rank, is a non-officer.
+OFFICER_RANKS = {"Chief", "Deputy Chief", "Assistant Chief", "Captain", "Lieutenant"}
 
 # Drawn map features. Category drives styling and the map layer it lives in.
 # "Symbol" holds placeable fire-service symbols (see MAP_SYMBOLS).
@@ -169,10 +183,23 @@ class Department(db.Model):
     # Admin-defined default order of builder element kinds (CSV of
     # PREPLAN_ELEMENT_KINDS); None falls back to DEFAULT_ELEMENT_SEQUENCE.
     element_sequence = db.Column(db.String(200))
+    # How officer-created pre-plans route for review (see OFFICER_REVIEW_POLICIES).
+    officer_review_policy = db.Column(
+        db.String(20), nullable=False, server_default="commanding_officer"
+    )
 
     users = db.relationship(
         "User", backref="department", cascade="all, delete-orphan"
     )
+
+    def superuser(self):
+        """The department's top authority ("the chief") for review routing — the
+        rank-Chief superuser if there is one, else the earliest superuser."""
+        supers = [u for u in self.users if u.role == "superuser" and u.is_active]
+        if not supers:
+            return None
+        supers.sort(key=lambda u: (u.rank != "Chief", u.id))
+        return supers[0]
 
     def __repr__(self):
         return f"<Department {self.id} {self.name!r}>"
@@ -191,6 +218,11 @@ class User(UserMixin, db.Model):
     department_id = db.Column(
         db.Integer, db.ForeignKey("department.id"), nullable=False
     )
+    # Chain of command: this user's reviewer (an officer), set by an admin/superuser.
+    commanding_officer_id = db.Column(
+        db.Integer, db.ForeignKey("app_user.id", name="fk_user_commanding_officer")
+    )
+    commanding_officer = db.relationship("User", remote_side=[id])
     # Overrides UserMixin.is_active: Flask-Login refuses login for inactive users.
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, default=_utcnow)
@@ -203,7 +235,17 @@ class User(UserMixin, db.Model):
 
     @property
     def is_admin(self):
-        return self.role == "admin"
+        # A superuser inherits every admin power (member < admin < superuser).
+        return self.role in ("admin", "superuser")
+
+    @property
+    def is_superuser(self):
+        return self.role == "superuser"
+
+    @property
+    def is_officer(self):
+        # Officer status is derived from rank (see OFFICER_RANKS); no rank = non-officer.
+        return self.rank in OFFICER_RANKS
 
     def __repr__(self):
         return f"<User {self.id} {self.email!r} ({self.role})>"
@@ -282,12 +324,20 @@ class Occupancy(db.Model):
     status = db.Column(db.String(20), nullable=False, default="draft")
     submitted_to_id = db.Column(db.Integer, db.ForeignKey("app_user.id"))
     submitted_at = db.Column(db.DateTime)
+    # Set when a reviewer approves or requests changes; review_note holds the
+    # request-changes reason the author sees.
+    reviewed_by_id = db.Column(
+        db.Integer, db.ForeignKey("app_user.id", name="fk_occupancy_reviewed_by")
+    )
+    reviewed_at = db.Column(db.DateTime)
+    review_note = db.Column(db.Text)
 
     # Relationships
     department = db.relationship("Department")
     # Two FKs point at app_user, so disambiguate with foreign_keys.
     author = db.relationship("User", foreign_keys=[created_by])
     reviewer = db.relationship("User", foreign_keys=[submitted_to_id])
+    reviewed_by = db.relationship("User", foreign_keys=[reviewed_by_id])
     elements = db.relationship(
         "PreplanElement", backref="occupancy",
         cascade="all, delete-orphan", order_by="PreplanElement.position",

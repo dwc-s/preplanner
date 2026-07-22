@@ -8,7 +8,7 @@
 
   <table class="table">
     <thead>
-      <tr><th>Email</th><th>Name</th><th>Rank</th><th>Role</th><th>Status</th><th></th></tr>
+      <tr><th>Email</th><th>Name</th><th>Rank</th><th>Role</th><th>Commanding officer</th><th>Status</th><th></th></tr>
     </thead>
     <tbody>
       {% for u in users %}
@@ -27,7 +27,33 @@
               </select>
             </form>
           </td>
-          <td>{{ u.role }}</td>
+          <td>
+            {% if current_user.is_superuser or u.role != 'superuser' %}
+            <form method="post" action="{{ url_for('auth.user_set_role', user_id=u.id) }}"
+                  data-autosave data-autosave-compact>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="role">
+                {% for r in USER_ROLES %}
+                  {% if r != 'superuser' or current_user.is_superuser %}
+                  <option value="{{ r }}" {% if u.role == r %}selected{% endif %}>{{ r }}</option>
+                  {% endif %}
+                {% endfor %}
+              </select>
+            </form>
+            {% else %}{{ u.role }}{% endif %}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('auth.user_set_co', user_id=u.id) }}"
+                  data-autosave data-autosave-compact>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="commanding_officer_id">
+                <option value="">—</option>
+                {% for m in users if m.id != u.id %}
+                  <option value="{{ m.id }}" {% if u.commanding_officer_id == m.id %}selected{% endif %}>{{ m.name or m.email }}</option>
+                {% endfor %}
+              </select>
+            </form>
+          </td>
           <td>{% if u.is_active %}Active{% else %}<span class="sev sev-high">Inactive</span>{% endif %}</td>
           <td>
             {% if u.id != current_user.id %}

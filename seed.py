@@ -172,13 +172,37 @@ def seed_database():
         db.session.flush()  # assign dept.id
     admin = User.query.filter_by(email=DEMO_EMAIL).first()
     if admin is None:
+        # The founding account is the department's superuser (the Chief).
         admin = User(email=DEMO_EMAIL, name="Demo Admin",
-                     role="admin", department_id=dept.id)
+                     role="superuser", rank="Chief", department_id=dept.id)
         admin.set_password(DEMO_PASSWORD)
         db.session.add(admin)
         db.session.flush()  # assign admin.id so pre-plans can be attributed
 
+    # Demo crew so the review chain is explorable: a Captain (officer) whose commanding
+    # officer is the Chief, and a Firefighter (non-officer) whose CO is the Captain.
+    captain = User.query.filter_by(email="captain@example.com").first()
+    if captain is None:
+        captain = User(email="captain@example.com", name="Casey Captain", role="member",
+                       rank="Captain", department_id=dept.id, commanding_officer_id=admin.id)
+        captain.set_password(DEMO_PASSWORD)
+        db.session.add(captain)
+        db.session.flush()
+    ff = User.query.filter_by(email="firefighter@example.com").first()
+    if ff is None:
+        ff = User(email="firefighter@example.com", name="Field Firefighter", role="member",
+                  rank="Firefighter", department_id=dept.id, commanding_officer_id=captain.id)
+        ff.set_password(DEMO_PASSWORD)
+        db.session.add(ff)
+        db.session.flush()
+
     n = seed_department(dept, created_by=admin)
+    db.session.flush()  # assign occupancy ids
+    # Attribute one plan to the firefighter so there's a non-officer plan to submit.
+    ff_plan = (Occupancy.query.filter_by(department_id=dept.id)
+               .order_by(Occupancy.id.desc()).first())
+    if ff_plan is not None:
+        ff_plan.created_by = ff.id
     db.session.commit()
     return n
 

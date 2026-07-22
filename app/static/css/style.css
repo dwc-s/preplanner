@@ -248,12 +248,27 @@ th[data-sort].sort-desc::after { content: " \25BC"; font-size: .7em; }
 .ann-meta form, .dash-actions form { margin: 0; }
 .activity li { display: flex; flex-direction: column; }
 .activity li .subtle { font-size: .78rem; }
-.submit-review summary { display: inline-block; list-style: none; cursor: pointer; }
-.submit-review summary::-webkit-details-marker { display: none; }
-.submit-review[open] summary { margin-bottom: .4rem; }
-.submit-review form { display: flex; gap: .3rem; align-items: center; flex-wrap: wrap; }
-.submit-review select { padding: .25rem; border: 1px solid var(--line);
-  border-radius: var(--radius); font: inherit; font-size: .8rem; }
+/* Review workflow: the note an author sees + the reviewer's queue. */
+.review-note { font-size: .8rem; color: var(--warn); margin-top: .25rem; }
+.review-queue { list-style: none; margin: 0; padding: 0; display: grid; gap: .7rem; }
+.review-queue li { display: flex; justify-content: space-between; align-items: flex-start;
+  gap: .8rem; padding-bottom: .7rem; border-bottom: 1px solid var(--line); }
+.review-queue li:last-child { border-bottom: 0; padding-bottom: 0; }
+.rq-main { display: grid; gap: .1rem; min-width: 0; }
+.rq-main .subtle { font-size: .78rem; }
+.rq-actions { display: flex; gap: .4rem; align-items: flex-start; flex-shrink: 0; }
+.request-changes summary { display: inline-block; list-style: none; cursor: pointer; }
+.request-changes summary::-webkit-details-marker { display: none; }
+.request-changes form { display: grid; gap: .4rem; margin-top: .4rem; }
+.request-changes textarea { width: 240px; max-width: 60vw; padding: .4rem;
+  border: 1px solid var(--line); border-radius: var(--radius); font: inherit; font-size: .85rem; }
+
+/* Preferences page (class-gated sections). */
+.prefs { display: grid; gap: 1rem; max-width: 560px; }
+.pref-form { display: grid; gap: .8rem; margin-top: .6rem; }
+.pref-badge { font-size: .68rem; background: var(--red); color: #fff; padding: .1rem .45rem;
+  border-radius: 999px; vertical-align: middle; margin-left: .35rem; font-weight: 600; }
+.field-radio { display: flex; align-items: center; gap: .5rem; }
 
 /* --- asset library --- */
 .lib-upload { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }

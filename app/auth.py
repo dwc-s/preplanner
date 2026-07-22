@@ -18,7 +18,7 @@ from flask_login import (
 )
 
 from .extensions import db, limiter
-from .models import User, USER_ROLES, FIRE_RANKS
+from .models import User, USER_ROLES, FIRE_RANKS, OFFICER_REVIEW_POLICIES
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -31,11 +31,24 @@ def _random_password(length=12):
 
 
 def admin_required(f):
-    """Require an authenticated admin. Stacks on top of login_required."""
+    """Require an authenticated admin (superusers qualify — is_admin is widened).
+    Stacks on top of login_required."""
     @wraps(f)
     @login_required
     def wrapper(*args, **kwargs):
         if not current_user.is_admin:
+            abort(403)
+        return f(*args, **kwargs)
+    return wrapper
+
+
+def superuser_required(f):
+    """Require the department's top authority. For superuser-only powers (review
+    policy, granting superuser). Stacks on top of login_required."""
+    @wraps(f)
+    @login_required
+    def wrapper(*args, **kwargs):
+        if not current_user.is_superuser:
             abort(403)
         return f(*args, **kwargs)
     return wrapper
@@ -100,6 +113,10 @@ def user_create():
     password = request.form.get("password") or ""
     if role not in USER_ROLES:
         role = "member"
+    # Only a superuser may mint another superuser (the template hides the option for
+    # plain admins; this guards against a tampered request).
+    if role == "superuser" and not current_user.is_superuser:
+        role = "member"
     if rank not in FIRE_RANKS:
         rank = None
 
@@ -133,8 +150,14 @@ def user_toggle(user_id):
     user = (User.query
             .filter_by(id=user_id, department_id=current_user.department_id)
             .first_or_404())
+    deactivating_last_superuser = (
+        user.is_active and user.role == "superuser"
+        and User.query.filter_by(department_id=user.department_id, role="superuser",
+                                 is_active=True).filter(User.id != user.id).count() == 0)
     if user.id == current_user.id:
         flash("You can't deactivate your own account.", "error")
+    elif deactivating_last_superuser:
+        flash("You can't deactivate the department's only superuser.", "error")
     else:
         user.is_active = not user.is_active
         db.session.commit()
@@ -174,6 +197,55 @@ def user_set_rank(user_id):
     return redirect(url_for("auth.users_list"))
 
 
+@auth_bp.post("/users/<int:user_id>/commanding-officer")
+@admin_required
+def user_set_co(user_id):
+    """Assign a crew member's commanding officer (their reviewer for pre-plans)."""
+    user = (User.query
+            .filter_by(id=user_id, department_id=current_user.department_id)
+            .first_or_404())
+    co_id = request.form.get("commanding_officer_id") or ""
+    co = None
+    if co_id.isdigit():
+        co = User.query.filter_by(
+            id=int(co_id), department_id=current_user.department_id).first()
+    # A user can't be their own commanding officer.
+    user.commanding_officer_id = co.id if (co and co.id != user.id) else None
+    db.session.commit()
+    if request.headers.get("X-Autosave") == "1":
+        return jsonify(ok=True)
+    flash(f"Updated commanding officer for {user.email}.", "success")
+    return redirect(url_for("auth.users_list"))
+
+
+@auth_bp.post("/users/<int:user_id>/role")
+@admin_required
+def user_set_role(user_id):
+    """Change a crew member's role. Granting OR revoking superuser is superuser-only,
+    and a department must always keep at least one superuser."""
+    user = (User.query
+            .filter_by(id=user_id, department_id=current_user.department_id)
+            .first_or_404())
+    role = request.form.get("role") or "member"
+    if role not in USER_ROLES:
+        role = "member"
+    if (role == "superuser" or user.role == "superuser") and not current_user.is_superuser:
+        abort(403)
+    if user.role == "superuser" and role != "superuser":
+        others = (User.query
+                  .filter_by(department_id=current_user.department_id, role="superuser")
+                  .filter(User.id != user.id).count())
+        if others == 0:
+            flash("A department must keep at least one superuser.", "error")
+            return redirect(url_for("auth.users_list"))
+    user.role = role
+    db.session.commit()
+    if request.headers.get("X-Autosave") == "1":
+        return jsonify(ok=True)
+    flash(f"Updated role for {user.email}.", "success")
+    return redirect(url_for("auth.users_list"))
+
+
 # --- department roster (visible to every signed-in member) -------------------
 
 @auth_bp.get("/roster")
@@ -188,11 +260,21 @@ def roster():
     return render_template("roster.html", members=members)
 
 
-# --- self-service ------------------------------------------------------------
+# --- self-service (Preferences) ----------------------------------------------
+
+@auth_bp.get("/preferences")
+@login_required
+def preferences():
+    """Per-user settings, with sections gated by class (superuser / officer / member).
+    A framework we'll grow; today it holds password change + the review policy."""
+    return render_template("preferences.html")
+
 
 @auth_bp.route("/account", methods=["GET", "POST"])
 @login_required
 def account():
+    """Password change handler (the form lives on the Preferences page). GET redirects
+    there so old /account links keep working."""
     if request.method == "POST":
         current = request.form.get("current_password") or ""
         new = request.form.get("new_password") or ""
@@ -207,5 +289,18 @@ def account():
             current_user.set_password(new)
             db.session.commit()
             flash("Password changed.", "success")
-            return redirect(url_for("auth.account"))
-    return render_template("account.html")
+    return redirect(url_for("auth.preferences"))
+
+
+@auth_bp.post("/preferences/review-policy")
+@superuser_required
+def set_review_policy():
+    """Superuser sets how officer-created pre-plans are routed for review."""
+    policy = request.form.get("officer_review_policy") or ""
+    if policy in OFFICER_REVIEW_POLICIES:
+        current_user.department.officer_review_policy = policy
+        db.session.commit()
+        flash("Review policy updated.", "success")
+    else:
+        flash("Unknown review policy.", "error")
+    return redirect(url_for("auth.preferences"))

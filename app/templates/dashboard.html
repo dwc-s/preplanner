@@ -10,6 +10,36 @@
 
   <div class="dash-grid">
     <section class="dash-main">
+      {% if review_queue %}
+      <div class="card">
+        <h2>Awaiting your review</h2>
+        <ul class="review-queue">
+          {% for occ in review_queue %}
+          <li>
+            <div class="rq-main">
+              <a href="{{ url_for('main.occupancy_detail', occ_id=occ.id) }}">{{ occ.name }}</a>
+              <span class="subtle">from {{ (occ.author.name or occ.author.email) if occ.author else 'someone' }}{% if occ.submitted_at %} · {{ occ.submitted_at.strftime('%b %d') }}{% endif %}</span>
+            </div>
+            <div class="rq-actions">
+              <form method="post" action="{{ url_for('main.occupancy_review_approve', occ_id=occ.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-primary" type="submit">Approve</button>
+              </form>
+              <details class="request-changes">
+                <summary class="btn btn-sm">Request changes</summary>
+                <form method="post" action="{{ url_for('main.occupancy_review_changes', occ_id=occ.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <textarea name="note" rows="2" placeholder="What needs to change?" required></textarea>
+                  <button class="btn btn-sm" type="submit">Send back</button>
+                </form>
+              </details>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
       <div class="card">
         <h2>Your pre-plans</h2>
         {% if my_preplans %}
@@ -27,25 +57,23 @@
             {% for occ in my_preplans %}
             <tr>
               <td><a href="{{ url_for('main.occupancy_detail', occ_id=occ.id) }}">{{ occ.name }}</a></td>
-              <td><span class="status status-{{ occ.status }}">{{ occ.status|replace('_', ' ')|title }}</span></td>
+              <td>
+                <span class="status status-{{ occ.status }}">{{ occ.status|replace('_', ' ')|title }}</span>
+                {% if occ.status == 'needs_changes' and occ.review_note %}
+                <div class="review-note">✎ {{ occ.review_note }}</div>
+                {% endif %}
+              </td>
               <td>{{ (occ.reviewer.name or occ.reviewer.email) if occ.reviewer else '—' }}</td>
               <td data-value="{{ occ.updated_at.isoformat() if occ.updated_at else '' }}">
                 {{ occ.updated_at.strftime('%Y-%m-%d') if occ.updated_at else '—' }}</td>
               <td class="dash-actions">
-                {% if reviewers %}
-                <details class="submit-review">
-                  <summary class="btn btn-sm">Submit for review</summary>
-                  <form method="post" action="{{ url_for('main.occupancy_submit_review', occ_id=occ.id) }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <select name="reviewer_id" aria-label="Reviewer" required>
-                      <option value="" disabled selected>— reviewer —</option>
-                      {% for m in reviewers %}
-                        <option value="{{ m.id }}">{{ m.name or m.email }}</option>
-                      {% endfor %}
-                    </select>
-                    <button class="btn btn-sm btn-primary" type="submit">Submit</button>
-                  </form>
-                </details>
+                {% if occ.status in ('draft', 'needs_changes') %}
+                <form method="post" action="{{ url_for('main.occupancy_submit_review', occ_id=occ.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-sm btn-primary" type="submit">Submit for review</button>
+                </form>
+                {% elif occ.status == 'in_review' %}<span class="subtle">Awaiting review</span>
+                {% elif occ.status == 'approved' %}<span class="subtle">✓ Approved</span>
                 {% endif %}
               </td>
             </tr>

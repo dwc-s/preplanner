@@ -119,13 +119,12 @@ def index():
                      .order_by(Announcement.created_at.desc()).limit(10).all())
     my_preplans = (dept_query(Occupancy).filter_by(created_by=current_user.id)
                    .order_by(Occupancy.updated_at.desc()).all())
-    # Possible reviewers = other active members (you can't submit to yourself). When
-    # empty (solo dept / sandbox), the dashboard hides the "submit for review" action.
-    reviewers = (User.query.filter_by(department_id=dept_id, is_active=True)
-                 .filter(User.id != current_user.id)
-                 .order_by(User.name).all())
+    # Pre-plans awaiting this user's review (routed here by the review policy).
+    review_queue = (dept_query(Occupancy)
+                    .filter_by(submitted_to_id=current_user.id, status="in_review")
+                    .order_by(Occupancy.submitted_at.desc()).all())
     return render_template("dashboard.html", recent=recent, announcements=announcements,
-                           my_preplans=my_preplans, reviewers=reviewers)
+                           my_preplans=my_preplans, review_queue=review_queue)
 
 
 @main_bp.get("/map")
@@ -163,7 +162,7 @@ def sandbox_start():
     db.session.add(dept)
     db.session.flush()  # assign dept.id
     user = User(email=f"sandbox-{token}@sandbox.invalid", name="Sandbox User",
-                role="admin", department_id=dept.id)
+                role="superuser", rank="Chief", department_id=dept.id)
     user.set_password(secrets.token_urlsafe(16))  # random; never surfaced
     db.session.add(user)
     db.session.flush()  # assign user.id so demo pre-plans can be attributed to them
@@ -276,27 +275,90 @@ def occupancy_delete(occ_id):
     return redirect(url_for("main.occupancy_list"))
 
 
-# --- pre-plan review (stub) + department announcements -----------------------
+# --- pre-plan review workflow + department announcements ---------------------
+
+def _can_review(occ):
+    """A pre-plan may be actioned by the person it was submitted to, or any superuser."""
+    return occ.submitted_to_id == current_user.id or current_user.is_superuser
+
 
 @main_bp.post("/occupancies/<int:occ_id>/submit-review")
 @login_required
 def occupancy_submit_review(occ_id):
-    """Stub: record that a pre-plan was submitted to a reviewer. The full review
-    workflow (reviewer notifications, approve / request-changes) is on the roadmap."""
+    """Submit a pre-plan for review, auto-routed by the author's rank and the
+    department's officer-review policy (see OFFICER_REVIEW_POLICIES). Non-officers are
+    never auto-approved."""
     occ = get_owned(Occupancy, occ_id)
-    reviewer_id = _int(request.form, "reviewer_id")
-    reviewer = None
-    if reviewer_id:
-        reviewer = User.query.filter_by(
-            id=reviewer_id, department_id=current_user.department_id).first()
-    if reviewer is None:  # "in review" must name a reviewer
-        flash("Choose a reviewer to submit this pre-plan to.", "error")
-        return redirect(url_for("main.index"))
-    occ.status = "in_review"
-    occ.submitted_to_id = reviewer.id
+    if occ.created_by != current_user.id:
+        abort(403)  # you may only submit your own pre-plan for review
+    author = current_user
+    dept = author.department
+    chief = dept.superuser()
+
+    def _auto_approve():
+        occ.status = "approved"
+        occ.submitted_to_id = None
+        occ.reviewed_by_id = author.id
+        occ.reviewed_at = datetime.now(timezone.utc)
+        occ.review_note = None
+
+    if author.is_superuser or (author.is_officer
+                               and dept.officer_review_policy == "auto_approve"):
+        _auto_approve()
+    else:
+        # Officers under the "chief" policy go to the chief; everyone else (officers
+        # under "commanding_officer", and all non-officers) goes to their CO, falling
+        # back to the chief.
+        if author.is_officer and dept.officer_review_policy == "chief":
+            reviewer = chief
+        else:
+            reviewer = author.commanding_officer or chief
+        if reviewer is None or reviewer.id == author.id:
+            flash("No reviewer is set up — ask an admin to assign you a commanding "
+                  "officer (or designate a chief).", "error")
+            return redirect(url_for("main.index"))
+        occ.status = "in_review"
+        occ.submitted_to_id = reviewer.id
+        occ.reviewed_by_id = None
+        occ.review_note = None
+
     occ.submitted_at = datetime.now(timezone.utc)
     db.session.commit()
-    flash("Submitted for review (the full review workflow is coming soon).", "success")
+    if occ.status == "approved":
+        flash(f"“{occ.name}” is approved.", "success")
+    else:
+        who = occ.reviewer.name or occ.reviewer.email
+        flash(f"Submitted “{occ.name}” to {who} for review.", "success")
+    return redirect(url_for("main.index"))
+
+
+@main_bp.post("/occupancies/<int:occ_id>/review/approve")
+@login_required
+def occupancy_review_approve(occ_id):
+    occ = get_owned(Occupancy, occ_id)
+    if not _can_review(occ):
+        abort(403)
+    occ.status = "approved"
+    occ.reviewed_by_id = current_user.id
+    occ.reviewed_at = datetime.now(timezone.utc)
+    occ.review_note = None
+    db.session.commit()
+    flash(f"Approved “{occ.name}”.", "success")
+    return redirect(url_for("main.index"))
+
+
+@main_bp.post("/occupancies/<int:occ_id>/review/request-changes")
+@login_required
+def occupancy_review_changes(occ_id):
+    occ = get_owned(Occupancy, occ_id)
+    if not _can_review(occ):
+        abort(403)
+    occ.status = "needs_changes"
+    occ.review_note = _str(request.form, "note")
+    occ.reviewed_by_id = current_user.id
+    occ.reviewed_at = datetime.now(timezone.utc)
+    db.session.commit()
+    flash(f"Requested changes on “{occ.name}”.", "success")
     return redirect(url_for("main.index"))
 
 
