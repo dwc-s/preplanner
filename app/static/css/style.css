@@ -30,6 +30,8 @@
   --radius: 8px;
   --shadow: 0 1px 3px rgba(0,0,0,.08);
   --font-serif: "PT Serif", Georgia, "Times New Roman", serif;
+  --topbar-h: 52px;
+  --sidebar-w: 240px;
 }
 
 * { box-sizing: border-box; }
@@ -51,13 +53,20 @@ a:hover { text-decoration: underline; }
 
 /* --- layout --- */
 .topbar {
-  display: flex; align-items: center; gap: 1rem;
-  padding: .6rem 1rem;
+  display: flex; align-items: center; gap: .8rem;
+  min-height: var(--topbar-h);
+  padding: .4rem 1rem;
   background: var(--red);
   color: #fff;
   box-shadow: var(--shadow);
   position: sticky; top: 0; z-index: 1000;
 }
+.sidebar-toggle {
+  background: transparent; border: 0; color: #fff; cursor: pointer;
+  font-size: 1.5rem; line-height: 1; padding: .1rem .45rem;
+  border-radius: var(--radius);
+}
+.sidebar-toggle:hover { background: rgba(255,255,255,.15); }
 /* Logo sits on a white plate so its red wordmark/mark keep contrast on the red bar. */
 .brand { display: inline-flex; align-items: center; padding: 4px 9px; background: #fff;
   border-radius: var(--radius); box-shadow: 0 1px 2px rgba(0,0,0,.18); }
@@ -103,6 +112,61 @@ a:hover { text-decoration: underline; }
 .container { max-width: 1080px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
 .full { flex: 1 1 auto; min-height: 0; display: flex; }
 #map { flex: 1 1 auto; min-height: 0; width: 100%; }
+
+/* --- collapsible left sidebar (authenticated navigation) --- */
+.content-area {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+  transition: margin-left .2s ease;
+}
+.sidebar {
+  position: fixed; top: var(--topbar-h); left: 0; bottom: 0; width: var(--sidebar-w);
+  background: var(--card); border-right: 1px solid var(--line);
+  box-shadow: 2px 0 10px rgba(0,0,0,.06);
+  /* Above Leaflet's map controls (z 1000) so the mobile drawer covers them. */
+  z-index: 1200;
+  display: flex; flex-direction: column; overflow-y: auto;
+  transform: translateX(-100%); transition: transform .2s ease;
+}
+.sidebar-nav { display: flex; flex-direction: column; gap: .12rem; padding: .7rem .6rem; flex: 1 1 auto; }
+.sidebar-nav a { color: var(--ink); padding: .55rem .7rem; border-radius: var(--radius); }
+.sidebar-nav a:hover { background: var(--bg); text-decoration: none; }
+.sidebar-nav a.active { background: #fdecea; color: var(--red); font-weight: 600; }
+.sidebar-new { text-align: center; margin-bottom: .5rem; }
+.sidebar-foot { border-top: 1px solid var(--line); padding: .7rem .6rem; display: grid; gap: .55rem; }
+.sidebar-user { color: var(--muted); font-size: .85rem; padding: .2rem .1rem; border-radius: var(--radius); }
+.sidebar-user:hover { color: var(--ink); text-decoration: none; }
+.sidebar-logout { margin: 0; }
+.sidebar-logout button { width: 100%; color: var(--ink); background: transparent;
+  border: 1px solid var(--line); padding: .45rem; border-radius: var(--radius);
+  cursor: pointer; font: inherit; font-size: .9rem; }
+.sidebar-logout button:hover { background: var(--bg); }
+/* Sync widget stays offline/field-oriented: hidden on desktop, shown on mobile
+   (matches the mobile-only rule) — restyled for the light sidebar. */
+.sidebar-sync { display: none; align-items: center; gap: .4rem; }
+.sidebar-sync .nav-sync { color: var(--ink); border-color: var(--line); }
+.sidebar-sync .sync-status { color: var(--muted); }
+.sidebar-backdrop {
+  position: fixed; inset: var(--topbar-h) 0 0 0; background: rgba(0,0,0,.4);
+  z-index: 1150;  /* above Leaflet controls, below the drawer, so it dims the map */
+  opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+body.sidebar-open .sidebar { transform: translateX(0); }  /* drawer open */
+
+@media (min-width: 900px) {
+  /* Desktop: open by default and pushes the content; collapse via .sidebar-closed. */
+  .sidebar { transform: translateX(0); }
+  .content-area { margin-left: var(--sidebar-w); }
+  body.sidebar-closed .sidebar { transform: translateX(-100%); }
+  body.sidebar-closed .content-area { margin-left: 0; }
+  .sidebar-backdrop { display: none; }
+}
+@media (max-width: 899px) {
+  /* Mobile: overlay drawer + dim backdrop when open. */
+  body.sidebar-open .sidebar-backdrop { opacity: 1; pointer-events: auto; }
+}
+@media (hover: none) and (pointer: coarse), (max-width: 700px) {
+  .sidebar-sync { display: flex; }
+}
 
 /* --- headings --- */
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }

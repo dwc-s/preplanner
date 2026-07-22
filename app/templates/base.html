@@ -20,31 +20,15 @@
 </head>
 <body>
   <header class="topbar">
+    {% if current_user.is_authenticated %}
+    <button type="button" class="sidebar-toggle" id="sidebar-toggle"
+            aria-label="Toggle navigation" aria-controls="sidebar" aria-expanded="false">☰</button>
+    {% endif %}
     <a class="brand" href="{{ url_for('main.index') }}">
       <img class="brand-logo" src="{{ url_for('static', filename='images/preplanner-logo.png') }}"
            alt="Pre-Planner" width="1122" height="258">
     </a>
-    {% if current_user.is_authenticated %}
-    <nav class="nav">
-      <a href="{{ url_for('main.map_view') }}">Map</a>
-      <a href="{{ url_for('main.occupancy_list') }}">Occupancies</a>
-      <a href="{{ url_for('main.hydrant_list') }}">Hydrants</a>
-      <a href="{{ url_for('main.library') }}">Library</a>
-      <a href="{{ url_for('auth.roster') }}">Roster</a>
-      <a class="btn btn-primary" href="{{ url_for('main.occupancy_editor') }}?new=1">+ New Pre-Plan</a>
-      {% if current_user.is_admin %}
-      <a href="{{ url_for('auth.users_list') }}">Users</a>
-      <a href="{{ url_for('main.overlays') }}">Layers</a>
-      {% endif %}
-      <button type="button" id="sync-now" class="nav-sync" title="Sync now">&#8635;</button>
-      <span id="sync-status" class="sync-status" aria-live="polite"></span>
-      <a href="{{ url_for('auth.account') }}" class="nav-user">{{ current_user.name or current_user.email }} · {{ current_user.department.name }}</a>
-      <form class="nav-logout" method="post" action="{{ url_for('auth.logout') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit">Sign out</button>
-      </form>
-    </nav>
-    {% else %}
+    {% if not current_user.is_authenticated %}
     <nav class="nav">
       <form method="post" action="{{ url_for('main.sandbox_start') }}" class="nav-inline-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -54,26 +38,59 @@
     </nav>
     {% endif %}
   </header>
-  {% if current_user.is_authenticated and current_user.department.is_sandbox %}
-  <div class="sandbox-banner">
-    <span>🧪 <strong>Sandbox</strong> — explore freely; changes reset periodically.</span>
-    <a href="{{ url_for('auth.register') }}">Sign up to keep your work →</a>
-  </div>
+
+  {% if current_user.is_authenticated %}
+  {% set ep = request.endpoint %}
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <nav class="sidebar-nav">
+      <a class="btn btn-primary sidebar-new" href="{{ url_for('main.occupancy_editor') }}?new=1">+ New Pre-Plan</a>
+      <a href="{{ url_for('main.map_view') }}" class="{{ 'active' if ep == 'main.map_view' }}">Map</a>
+      <a href="{{ url_for('main.occupancy_list') }}" class="{{ 'active' if ep == 'main.occupancy_list' }}">Occupancies</a>
+      <a href="{{ url_for('main.hydrant_list') }}" class="{{ 'active' if ep == 'main.hydrant_list' }}">Hydrants</a>
+      <a href="{{ url_for('main.library') }}" class="{{ 'active' if ep == 'main.library' }}">Library</a>
+      <a href="{{ url_for('auth.roster') }}" class="{{ 'active' if ep == 'auth.roster' }}">Roster</a>
+      {% if current_user.is_admin %}
+      <a href="{{ url_for('auth.users_list') }}" class="{{ 'active' if ep == 'auth.users_list' }}">Users</a>
+      <a href="{{ url_for('main.overlays') }}" class="{{ 'active' if ep == 'main.overlays' }}">Layers</a>
+      {% endif %}
+    </nav>
+    <div class="sidebar-foot">
+      <div class="sidebar-sync">
+        <button type="button" id="sync-now" class="nav-sync" title="Sync now">&#8635;</button>
+        <span id="sync-status" class="sync-status" aria-live="polite"></span>
+      </div>
+      <a href="{{ url_for('auth.account') }}" class="sidebar-user {{ 'active' if ep == 'auth.account' }}">{{ current_user.name or current_user.email }} · {{ current_user.department.name }}</a>
+      <form class="sidebar-logout" method="post" action="{{ url_for('auth.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit">Sign out</button>
+      </form>
+    </div>
+  </aside>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
   {% endif %}
 
-  <main class="{% block main_class %}container{% endblock %}">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <div class="flashes">
-          {% for category, message in messages %}
-            <div class="flash flash-{{ category }}">{{ message }}</div>
-          {% endfor %}
-        </div>
-      {% endif %}
-    {% endwith %}
+  <div class="content-area">
+    {% if current_user.is_authenticated and current_user.department.is_sandbox %}
+    <div class="sandbox-banner">
+      <span>🧪 <strong>Sandbox</strong> — explore freely; changes reset periodically.</span>
+      <a href="{{ url_for('auth.register') }}">Sign up to keep your work →</a>
+    </div>
+    {% endif %}
 
-    {% block content %}{% endblock %}
-  </main>
+    <main class="{% block main_class %}container{% endblock %}">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flashes">
+            {% for category, message in messages %}
+              <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
 
   <div id="offline-banner" hidden>Offline — showing saved data. Changes can't be saved until you reconnect.</div>
 
@@ -106,6 +123,41 @@
       window.addEventListener("online", update);
       window.addEventListener("offline", update);
       update();
+    })();
+    (function () {
+      // Collapsible left sidebar. Desktop: open by default and pushes the content,
+      // and remembers your choice. Mobile: an off-canvas drawer (starts closed).
+      var toggle = document.getElementById("sidebar-toggle");
+      if (!toggle) return;  // logged-out pages have no sidebar
+      var body = document.body;
+      var backdrop = document.getElementById("sidebar-backdrop");
+      var KEY = "preplanner.sidebar";
+      function wide() { return window.matchMedia("(min-width: 900px)").matches; }
+      function isOpen() {
+        if (body.classList.contains("sidebar-open")) return true;
+        if (body.classList.contains("sidebar-closed")) return false;
+        return wide();  // no explicit choice → CSS default (open on desktop)
+      }
+      function apply(open, persist) {
+        body.classList.remove("sidebar-open", "sidebar-closed");
+        body.classList.add(open ? "sidebar-open" : "sidebar-closed");
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        if (persist && wide()) { try { localStorage.setItem(KEY, open ? "open" : "closed"); } catch (e) {} }
+        // Any Leaflet map re-fits to the new width once the transition settles.
+        setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 220);
+      }
+      if (wide()) {  // restore the desktop preference (mobile always starts closed)
+        var saved = null; try { saved = localStorage.getItem(KEY); } catch (e) {}
+        if (saved === "open") body.classList.add("sidebar-open");
+        else if (saved === "closed") body.classList.add("sidebar-closed");
+      }
+      toggle.setAttribute("aria-expanded", isOpen() ? "true" : "false");
+      toggle.addEventListener("click", function () { apply(!isOpen(), true); });
+      if (backdrop) backdrop.addEventListener("click", function () { apply(false, true); });
+      var nav = document.querySelector(".sidebar-nav");
+      if (nav) nav.addEventListener("click", function (e) {
+        if (!wide() && e.target.closest("a")) apply(false, false);  // close drawer after a tap
+      });
     })();
     (function () {
       var el = document.getElementById("sync-status");
