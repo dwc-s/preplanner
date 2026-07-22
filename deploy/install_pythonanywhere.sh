@@ -83,6 +83,15 @@ info "Installing dependencies (this can take a minute) ..."
 "$VENV_PIP" install -r "$ROOT/requirements.txt"
 ok "Dependencies installed into $VENV_DIR (Python $PYVER)."
 
+# Optional OCR engine (image text search). Everything works without it.
+if command -v tesseract >/dev/null 2>&1; then
+  TESS_STATUS="found: $(tesseract --version 2>&1 | head -1)"
+  ok "OCR engine available — $TESS_STATUS"
+else
+  TESS_STATUS="not found — image OCR disabled"
+  warn "tesseract not found: photo text search (OCR) is off. Optional; see notes below."
+fi
+
 # ---- 2. gather database configuration ---------------------------------------
 info "MySQL settings (from your PythonAnywhere 'Databases' tab)"
 warn "First create the database there if you haven't: open the Databases tab,"
@@ -168,9 +177,17 @@ cat <<EOF
         URL:   /static/
         Path:  $ROOT/app/static
   5. Click the green Reload button.
+  6. Scheduled maintenance (recommended) — in the 'Tasks' tab add a scheduled task:
+        $ROOT/deploy/scheduled_tasks.sh
+     It OCRs newly-uploaded photos (deferred at upload) and clears expired "try the
+     sandbox" demos. The free tier runs it once a day; paid tiers, every few minutes.
 
   Site:   https://${PA_USER}.pythonanywhere.com
   Sign in with the admin account you just created.
+
+  Optional — photo text search (OCR) needs the 'tesseract' binary ($TESS_STATUS here).
+  PythonAnywhere already has it; a self-host can 'apt install tesseract-ocr'. Without
+  it everything works except image OCR (the queue just waits).
 
   Change settings later by editing  $ROOT/.env  then Reloading.
   Update the app later with:

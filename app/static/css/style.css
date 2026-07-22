@@ -154,6 +154,63 @@ th[data-sort].sort-desc::after { content: " \25BC"; font-size: .7em; }
 .submit-review select { padding: .25rem; border: 1px solid var(--line);
   border-radius: var(--radius); font: inherit; font-size: .8rem; }
 
+/* --- asset library --- */
+.lib-upload { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.lib-upload select, .lib-upload input[type=text] { padding: .4rem .5rem;
+  border: 1px solid var(--line); border-radius: var(--radius); font: inherit; }
+.lib-upload input[type=text] { flex: 1; min-width: 140px; }
+.lib-toolbar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center;
+  justify-content: space-between; margin: 1rem 0; }
+.lib-toolbar .search { margin: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.chip { padding: .3rem .7rem; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink); font-size: .85rem; }
+.chip:hover { text-decoration: none; background: #f0f2f4; }
+.chip.active { background: var(--red); border-color: var(--red); color: #fff; }
+.asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem; }
+.asset-card { background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+  display: flex; flex-direction: column; }
+.asset-thumb { display: flex; align-items: center; justify-content: center; height: 130px;
+  background: #f4f6f8; overflow: hidden; }
+.asset-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.asset-file-icon { font-weight: 700; color: var(--muted); font-size: 1.1rem; letter-spacing: .05em; }
+.asset-body { padding: .6rem .7rem; display: grid; gap: .35rem; }
+.asset-title { font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.asset-tags { display: flex; align-items: center; gap: .4rem; }
+.kind-badge { display: inline-block; padding: .1rem .5rem; border-radius: 999px;
+  background: #eef1f4; color: var(--muted); font-size: .72rem; font-weight: 600; }
+.asset-body form { margin: 0; }
+
+/* --- pre-plan builder --- */
+.builder { display: grid; grid-template-columns: 300px 1fr; gap: 1rem; align-items: start; }
+@media (max-width: 760px) { .builder { grid-template-columns: 1fr; } }
+.builder-palette h2, .builder-doc h2 { margin: 0 0 .5rem; font-size: 1rem; }
+.palette-item { border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: .5rem; }
+.palette-item > summary { padding: .5rem .7rem; cursor: pointer; font-weight: 600; list-style: none; }
+.palette-item > summary::-webkit-details-marker { display: none; }
+.palette-item > summary::before { content: "+ "; color: var(--muted); }
+.palette-item[open] > summary::before { content: "– "; }
+.palette-body { padding: .3rem .7rem .7rem; display: grid; gap: .5rem; }
+.palette-body form { margin: 0; display: flex; gap: .3rem; flex-wrap: wrap; align-items: center; }
+.palette-body select, .palette-body input[type=text], .palette-body input[type=file] {
+  padding: .3rem; border: 1px solid var(--line); border-radius: var(--radius);
+  font: inherit; font-size: .82rem; max-width: 100%; }
+.palette-body input[type=file] { flex: 1; min-width: 0; }
+.hint-link { font-size: .82rem; color: var(--red); display: inline-block; }
+.element-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.element { display: flex; align-items: center; gap: .6rem; padding: .5rem .6rem;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
+.element.dragging { opacity: .45; }
+.drag-handle { cursor: grab; color: var(--muted); font-size: 1.1rem; user-select: none; }
+.element-main { display: flex; align-items: center; gap: .6rem; flex: 1; min-width: 0; }
+.element-main > div { display: grid; gap: .1rem; min-width: 0; }
+.element-main strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.element-icon { font-size: 1.4rem; }
+.element-thumb { width: 54px; height: 40px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+.element form { margin: 0; }
+
 /* --- flash messages --- */
 .flashes { margin-bottom: 1rem; display: grid; gap: .5rem; }
 .flash { padding: .6rem .9rem; border-radius: var(--radius); border-left: 4px solid; background: #fff; box-shadow: var(--shadow); }

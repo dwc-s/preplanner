@@ -27,6 +27,7 @@
       <a href="{{ url_for('main.map_view') }}">Map</a>
       <a href="{{ url_for('main.occupancy_list') }}">Occupancies</a>
       <a href="{{ url_for('main.hydrant_list') }}">Hydrants</a>
+      <a href="{{ url_for('main.library') }}">Library</a>
       <a href="{{ url_for('auth.roster') }}">Roster</a>
       <a class="btn btn-primary" href="{{ url_for('main.occupancy_editor') }}?new=1">+ New Pre-Plan</a>
       {% if current_user.is_admin %}

@@ -20,6 +20,20 @@ Pre-Planner has not yet cut a numbered release — everything below is on the
   the full review workflow (reviewer notifications, approve / request-changes) is on
   the roadmap.
 
+**Pre-plan builder & shared asset library**
+- A department **asset library** — upload floor plans, photos (incl. iPhone **HEIC**,
+  transcoded to JPEG for display), SDS, and documents once and reuse them across
+  pre-plans. Photos have their **GPS read from EXIF**; PDFs are indexed for text search
+  on upload, and photos are **OCR'd** (where a Tesseract binary is available) by a
+  background task so uploads stay fast. Files are named tidily and served only through
+  an authenticated, ownership-checked route.
+- A drag-and-drop **pre-plan builder** — a sidebar palette (Map · Floor Plans ·
+  Photos · SDS · Inspection reports) assembles an ordered document you can reorder by
+  dragging. Floor plans / photos / SDS come *from the library or a fresh upload*; the
+  map links to the mapping utility; SDS also links out to chemicalsafety.com's search
+  (their site can't be embedded); inspection reports are a placeholder (they live in
+  separate software). Admins set the department's **standard element order**.
+
 **Public landing & explore-first sandbox**
 - A public **splash / landing page** at `/` for logged-out visitors — the
   Pre-Planner logo, a short "about" blurb, and clear calls to action (try the
@@ -91,6 +105,10 @@ Pre-Planner has not yet cut a numbered release — everything below is on the
 - SQLite by default; MySQL or PostgreSQL via `DATABASE_URL`. Guided
   PythonAnywhere + MySQL installer and walkthrough. Runs on modest/free hosting —
   pure-Python, vendored front-end libraries, no system GDAL.
+- A `deploy/scheduled_tasks.sh` script (for cron / a PythonAnywhere scheduled task)
+  runs the background jobs — `flask ocr-pending` (photo OCR) and `flask
+  purge-sandboxes` (expired demo cleanup). Optional image OCR uses the host's
+  `tesseract` binary if present. Upload cap raised to 5 GB.
 
 ### Changed
 - Polylines and polygons now **finish on double-click** — the instinctive gesture.

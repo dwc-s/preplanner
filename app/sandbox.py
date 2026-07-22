@@ -18,7 +18,7 @@ from flask_login import current_user
 
 from .extensions import db
 from .models import (
-    Department, Occupancy, Hydrant, MapFeature, WmsLayer, Deletion, Announcement,
+    Department, Occupancy, Hydrant, MapFeature, WmsLayer, Deletion, Announcement, Asset,
 )
 
 SANDBOX_TTL_HOURS = 24
@@ -61,8 +61,10 @@ def purge_sandbox(dept):
     Hydrant.query.filter_by(department_id=dept_id).delete(synchronize_session=False)
     WmsLayer.query.filter_by(department_id=dept_id).delete(synchronize_session=False)
     for occ in Occupancy.query.filter_by(department_id=dept_id).all():
-        db.session.delete(occ)  # ORM delete → cascades contacts/hazards/floor plans
-    # Uploaded floor-plan images live under UPLOAD_FOLDER/<dept_id>/<occ_id>/.
+        db.session.delete(occ)  # ORM delete → cascades contacts/hazards/floor plans/elements
+    # Library assets go after occupancies (their pre-plan elements are gone by now).
+    Asset.query.filter_by(department_id=dept_id).delete(synchronize_session=False)
+    # Uploaded files (floor plans + library assets) live under UPLOAD_FOLDER/<dept_id>/.
     updir = os.path.join(current_app.config["UPLOAD_FOLDER"], str(dept_id))
     shutil.rmtree(updir, ignore_errors=True)
     db.session.delete(dept)  # cascades users

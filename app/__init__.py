@@ -86,6 +86,10 @@ def create_app(config_object="config.Config"):
             "MAP_FEATURE_CATEGORIES": models.MAP_FEATURE_CATEGORIES,
             "FIRE_RANKS": models.FIRE_RANKS,
             "PREPLAN_STATUSES": models.PREPLAN_STATUSES,
+            "ASSET_KINDS": models.ASSET_KINDS,
+            "ASSET_KIND_LABELS": models.ASSET_KIND_LABELS,
+            "PREPLAN_ELEMENT_KINDS": models.PREPLAN_ELEMENT_KINDS,
+            "PREPLAN_ELEMENT_LABELS": models.PREPLAN_ELEMENT_LABELS,
         }
 
     return app
@@ -138,3 +142,15 @@ def _register_cli(app):
         from .sandbox import purge_expired_sandboxes
         n = purge_expired_sandboxes(max_age_hours)
         click.echo(f"Purged {n} expired sandbox department(s).")
+
+    @app.cli.command("ocr-pending")
+    @click.option("--limit", default=0, type=int,
+                  help="Max assets to OCR this run (0 = no limit).")
+    def ocr_pending(limit):
+        """OCR the queue of uploaded image assets (deferred at upload; wire to cron)."""
+        from .assets import process_pending_ocr, OCR_AVAILABLE
+        if not OCR_AVAILABLE:
+            click.echo("Tesseract not available — skipping (queue left for later).")
+            return
+        n = process_pending_ocr(limit=limit or None)
+        click.echo(f"OCR'd {n} pending asset(s).")

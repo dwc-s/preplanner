@@ -93,6 +93,17 @@ USER_ROLES = ["admin", "member"]
 # stub for now — these drive the dashboard badges and the "submit for review" action.
 PREPLAN_STATUSES = ["draft", "in_review", "approved", "needs_changes"]
 
+# Shared asset library (Asset.kind) and the pre-plan builder.
+ASSET_KINDS = ["floorplan", "photo", "sds", "document"]
+# Element types the builder can place onto a pre-plan, in the default order an admin
+# can reorder per department (Department.element_sequence).
+PREPLAN_ELEMENT_KINDS = ["map", "floorplan", "photo", "sds", "inspection"]
+DEFAULT_ELEMENT_SEQUENCE = ",".join(PREPLAN_ELEMENT_KINDS)
+ASSET_KIND_LABELS = {"floorplan": "Floor Plan", "photo": "Photo",
+                     "sds": "SDS", "document": "Document"}
+PREPLAN_ELEMENT_LABELS = {"map": "Map", "floorplan": "Floor Plans", "photo": "Photos",
+                          "sds": "SDS", "inspection": "Inspection Reports"}
+
 # Fire-service ranks, listed most-senior first (drives roster ordering).
 FIRE_RANKS = [
     "Chief",
@@ -155,6 +166,9 @@ class Department(db.Model):
     # Ephemeral, no-signup demo workspaces: isolated per visitor and purged after a
     # TTL (see app/sandbox.py). Real departments leave this False.
     is_sandbox = db.Column(db.Boolean, nullable=False, default=False)
+    # Admin-defined default order of builder element kinds (CSV of
+    # PREPLAN_ELEMENT_KINDS); None falls back to DEFAULT_ELEMENT_SEQUENCE.
+    element_sequence = db.Column(db.String(200))
 
     users = db.relationship(
         "User", backref="department", cascade="all, delete-orphan"
@@ -274,6 +288,10 @@ class Occupancy(db.Model):
     # Two FKs point at app_user, so disambiguate with foreign_keys.
     author = db.relationship("User", foreign_keys=[created_by])
     reviewer = db.relationship("User", foreign_keys=[submitted_to_id])
+    elements = db.relationship(
+        "PreplanElement", backref="occupancy",
+        cascade="all, delete-orphan", order_by="PreplanElement.position",
+    )
     contacts = db.relationship(
         "Contact", backref="occupancy",
         cascade="all, delete-orphan", order_by="Contact.name",
@@ -603,3 +621,59 @@ class Announcement(db.Model):
 
     def __repr__(self):
         return f"<Announcement {self.id} dept={self.department_id}>"
+
+
+# --- Asset library + pre-plan builder ----------------------------------------
+
+class Asset(db.Model):
+    """A reusable department file (floor plan, photo, SDS, or document) that can be
+    attached to any number of pre-plans via PreplanElement. Text is extracted on
+    upload (PDF text + optional image OCR) for search; GPS comes from photo EXIF."""
+
+    __tablename__ = "asset"
+
+    id = db.Column(db.Integer, primary_key=True)
+    department_id = db.Column(
+        db.Integer, db.ForeignKey("department.id"), nullable=False, index=True
+    )
+    kind = db.Column(db.String(20), nullable=False)   # ASSET_KINDS
+    title = db.Column(db.String(200))
+    filename = db.Column(db.String(300))              # stored (on-disk) name
+    original_name = db.Column(db.String(300))         # as uploaded
+    content_type = db.Column(db.String(100))
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
+    text_content = db.Column(db.Text)                 # extracted / OCR'd, for search
+    # Image assets are queued for OCR (the slow step) and processed out-of-band by the
+    # `flask ocr-pending` task; PDFs get their text extracted inline at upload.
+    ocr_pending = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    uploaded_by = db.Column(db.Integer, db.ForeignKey("app_user.id"))
+    uploaded_at = db.Column(db.DateTime, default=_utcnow, index=True)
+
+    department = db.relationship("Department")
+    uploader = db.relationship("User")
+
+    def __repr__(self):
+        return f"<Asset {self.id} {self.kind} {self.title!r}>"
+
+
+class PreplanElement(db.Model):
+    """One ordered item in a pre-plan's assembled document: a map link, an attached
+    library Asset (floor plan / photo / SDS), or an inspection-report placeholder."""
+
+    __tablename__ = "preplan_element"
+
+    id = db.Column(db.Integer, primary_key=True)
+    occupancy_id = db.Column(
+        db.Integer, db.ForeignKey("occupancy.id"), nullable=False, index=True
+    )
+    kind = db.Column(db.String(20), nullable=False)   # PREPLAN_ELEMENT_KINDS
+    asset_id = db.Column(db.Integer, db.ForeignKey("asset.id"))  # null for map/inspection
+    position = db.Column(db.Integer, nullable=False, default=0)
+    caption = db.Column(db.String(300))
+    created_at = db.Column(db.DateTime, default=_utcnow)
+
+    asset = db.relationship("Asset")
+
+    def __repr__(self):
+        return f"<PreplanElement {self.id} {self.kind} occ={self.occupancy_id}>"

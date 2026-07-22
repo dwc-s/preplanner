@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Build · {{ occupancy.name }} · Pre-Planner{% endblock %}
+{% block head %}
+  <script defer src="{{ url_for('static', filename='js/builder.js') }}"></script>
+{% endblock %}
+
+{% block content %}
+<div class="dash-head">
+  <div>
+    <h1>Build pre-plan</h1>
+    <p class="subtle">{{ occupancy.name }}{% if occupancy.address %} · {{ occupancy.address }}{% endif %}</p>
+  </div>
+  <a class="btn" href="{{ url_for('main.occupancy_detail', occ_id=occupancy.id) }}">← Back to pre-plan</a>
+</div>
+
+<div class="builder">
+  <aside class="builder-palette card">
+    <h2>Add elements</h2>
+    <p class="hint">In your department's standard order. Drag items in the document to reorder.</p>
+    {% for kind in sequence %}
+    <details class="palette-item">
+      <summary>{{ PREPLAN_ELEMENT_LABELS[kind] }}</summary>
+      <div class="palette-body">
+        {% if kind == 'map' %}
+          <form method="post" action="{{ url_for('main.element_add', occ_id=occupancy.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="kind" value="map">
+            <button class="btn btn-sm btn-primary" type="submit">Add map</button>
+          </form>
+          <a class="hint-link" href="{{ url_for('main.map_view') }}" target="_blank" rel="noopener">Open mapping utility ↗</a>
+
+        {% elif kind == 'inspection' %}
+          <p class="hint">Inspection reports live in separate software — add a placeholder noting where they belong.</p>
+          <form method="post" action="{{ url_for('main.element_add', occ_id=occupancy.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="kind" value="inspection">
+            <input type="text" name="caption" placeholder="e.g. Annual inspection (external)">
+            <button class="btn btn-sm btn-primary" type="submit">Add placeholder</button>
+          </form>
+
+        {% else %}
+          {% set kind_assets = library_assets | selectattr('kind', 'equalto', kind) | list %}
+          {% if kind == 'sds' %}
+          <a class="hint-link" href="https://chemicalsafety.com/sds-search/" target="_blank" rel="noopener">Search SDS at chemicalsafety.com ↗</a>
+          {% endif %}
+          {% if kind_assets %}
+          <form method="post" action="{{ url_for('main.element_add', occ_id=occupancy.id) }}" class="palette-attach">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="kind" value="{{ kind }}">
+            <select name="asset_id" required>
+              <option value="" disabled selected>From library…</option>
+              {% for a in kind_assets %}<option value="{{ a.id }}">{{ a.title }}</option>{% endfor %}
+            </select>
+            <button class="btn btn-sm" type="submit">Add</button>
+          </form>
+          {% else %}
+          <p class="hint">Nothing of this type in the library yet.</p>
+          {% endif %}
+          <form method="post" action="{{ url_for('main.library_upload') }}" enctype="multipart/form-data" class="palette-upload">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="kind" value="{{ kind }}">
+            <input type="hidden" name="occupancy_id" value="{{ occupancy.id }}">
+            <input type="file" name="file" accept="{{ 'application/pdf' if kind == 'sds' else 'image/*,.heic,.heif,application/pdf' }}" required>
+            <button class="btn btn-sm btn-primary" type="submit">Upload &amp; add</button>
+          </form>
+        {% endif %}
+      </div>
+    </details>
+    {% endfor %}
+    <p class="hint"><a href="{{ url_for('main.library') }}">Manage the asset library →</a></p>
+  </aside>
+
+  <section class="builder-doc card">
+    <h2>Pre-plan contents</h2>
+    {% if elements %}
+    <ol class="element-list" id="element-list"
+        data-reorder="{{ url_for('main.elements_reorder', occ_id=occupancy.id) }}">
+      {% for el in elements %}
+      <li class="element" draggable="true" data-id="{{ el.id }}">
+        <span class="drag-handle" title="Drag to reorder">⠿</span>
+        <div class="element-main">
+          {% if el.kind == 'map' %}
+            <span class="element-icon">🗺️</span>
+            <div><strong>Map</strong>
+              <a class="hint-link" href="{{ url_for('main.map_view') }}" target="_blank" rel="noopener">Open map ↗</a></div>
+          {% elif el.kind == 'inspection' %}
+            <span class="element-icon">📋</span>
+            <div><strong>Inspection report</strong>
+              <span class="subtle">{{ el.caption or 'External software' }}</span></div>
+          {% elif el.asset %}
+            {% if el.asset.content_type and el.asset.content_type.startswith('image/') %}
+            <img class="element-thumb" src="{{ url_for('main.asset_file', asset_id=el.asset.id) }}" alt="{{ el.asset.title }}">
+            {% else %}<span class="element-icon">📄</span>{% endif %}
+            <div><strong>{{ el.asset.title }}</strong>
+              <span class="subtle">{{ PREPLAN_ELEMENT_LABELS.get(el.kind, el.kind) }}{% if el.asset.latitude is not none %} · 📍{% endif %}</span>
+              <a class="hint-link" href="{{ url_for('main.asset_file', asset_id=el.asset.id) }}" target="_blank" rel="noopener">Open ↗</a></div>
+          {% else %}
+            <span class="element-icon">⚠️</span>
+            <div><strong>{{ PREPLAN_ELEMENT_LABELS[el.kind] }}</strong><span class="subtle">(missing file)</span></div>
+          {% endif %}
+        </div>
+        <form method="post" action="{{ url_for('main.element_delete', element_id=el.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-ghost" type="submit" title="Remove">&times;</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="subtle">Nothing added yet. Use the palette to add a map, floor plans, photos,
+      and SDS — they'll assemble here in your department's standard order.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

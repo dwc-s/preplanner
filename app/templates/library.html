@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Asset Library · Pre-Planner{% endblock %}
+
+{% block content %}
+<div class="dash-head">
+  <h1>Asset Library</h1>
+</div>
+
+<div class="card">
+  <form class="lib-upload" method="post" action="{{ url_for('main.library_upload') }}"
+        enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <select name="kind" aria-label="Type">
+      {% for k in ASSET_KINDS %}<option value="{{ k }}">{{ ASSET_KIND_LABELS[k] }}</option>{% endfor %}
+    </select>
+    <input type="text" name="title" placeholder="Title (optional)">
+    <input type="file" name="file" accept="image/*,.heic,.heif,application/pdf" required>
+    <button class="btn btn-primary" type="submit">Upload</button>
+  </form>
+  <p class="hint">Images and PDFs. A photo's GPS is read automatically. PDFs are indexed
+    for text search immediately; photos are OCR'd for search shortly after upload.</p>
+</div>
+
+{% if current_user.is_admin %}
+<div class="card">
+  <h2 style="margin:0 0 .5rem;font-size:1rem;">Standard pre-plan element order</h2>
+  <form class="lib-upload" method="post" action="{{ url_for('main.element_sequence_set') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="sequence" value="{{ dept_sequence }}" style="flex:1;">
+    <button class="btn btn-primary" type="submit">Save order</button>
+  </form>
+  <p class="hint">Comma-separated; controls the order of the builder palette. Options:
+    {{ PREPLAN_ELEMENT_KINDS|join(', ') }}.</p>
+</div>
+{% endif %}
+
+<div class="lib-toolbar">
+  <div class="chips">
+    <a class="chip {{ 'active' if not kind }}" href="{{ url_for('main.library', q=q or none) }}">All</a>
+    {% for k in ASSET_KINDS %}
+    <a class="chip {{ 'active' if kind == k }}"
+       href="{{ url_for('main.library', kind=k, q=q or none) }}">{{ ASSET_KIND_LABELS[k] }}</a>
+    {% endfor %}
+  </div>
+  <form class="search" method="get" action="{{ url_for('main.library') }}">
+    {% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
+    <input type="search" name="q" value="{{ q }}" placeholder="Search titles + text…">
+  </form>
+</div>
+
+{% if assets %}
+<div class="asset-grid">
+  {% for a in assets %}
+  <div class="asset-card">
+    <a class="asset-thumb" href="{{ url_for('main.asset_file', asset_id=a.id) }}"
+       target="_blank" rel="noopener">
+      {% if a.content_type and a.content_type.startswith('image/') %}
+      <img src="{{ url_for('main.asset_file', asset_id=a.id) }}" alt="{{ a.title }}" loading="lazy">
+      {% else %}<span class="asset-file-icon">{{ (a.filename or 'file').rsplit('.', 1)[-1]|upper }}</span>{% endif %}
+    </a>
+    <div class="asset-body">
+      <strong class="asset-title" title="{{ a.title }}">{{ a.title }}</strong>
+      <div class="asset-tags">
+        <span class="kind-badge">{{ ASSET_KIND_LABELS[a.kind] }}</span>
+        {% if a.latitude is not none %}<span class="gps-badge" title="Has GPS location">📍</span>{% endif %}
+      </div>
+      <form method="post" action="{{ url_for('main.asset_delete', asset_id=a.id) }}"
+            onsubmit="return confirm('Remove this asset from the library?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-ghost" type="submit">Remove</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="subtle">No assets{{ ' match your search' if (q or kind) else ' yet' }}. Upload floor
+  plans, photos, and SDS above — they become available to attach to any pre-plan.</p>
+{% endif %}
+{% endblock %}

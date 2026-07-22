@@ -15,8 +15,10 @@ import pytest
 
 from app import create_app
 from app.extensions import db
+from app.assets import OCR_AVAILABLE
 from app.models import (
     Department, User, Hydrant, FloorPlan, Occupancy, Hazard, MapFeature,
+    Asset, PreplanElement,
 )
 
 
@@ -276,6 +278,203 @@ def test_submit_for_review_requires_a_reviewer(client, app):
         occ = db.session.get(Occupancy, occ_id)
         assert occ.status == "draft"
         assert occ.submitted_to_id is None
+
+
+# --- asset library + pre-plan builder ----------------------------------------
+
+def _gps_jpeg():
+    """A tiny JPEG carrying EXIF GPS (Montpelier-ish, 44°15'36\"N 72°34'30\"W)."""
+    from PIL import Image
+    buf = io.BytesIO()
+    exif = Image.Exif()
+    exif[0x8825] = {1: "N", 2: (44.0, 15.0, 36.0), 3: "W", 4: (72.0, 34.0, 30.0)}
+    Image.new("RGB", (32, 32), "white").save(buf, format="JPEG", exif=exif)
+    buf.seek(0)
+    return buf
+
+
+def test_library_upload_reads_gps(client, app):
+    r = client.post("/library/upload", data={
+        "kind": "photo", "title": "Rear loading dock", "file": (_gps_jpeg(), "dock.jpg"),
+    }, content_type="multipart/form-data", follow_redirects=True)
+    assert r.status_code == 200
+    with app.app_context():
+        a = Asset.query.filter_by(title="Rear loading dock").first()
+        assert a is not None and a.kind == "photo"
+        assert a.latitude and 44.2 < a.latitude < 44.3
+        assert a.longitude and -72.6 < a.longitude < -72.5
+
+
+def test_library_heic_transcoded_to_jpeg(client, app):
+    """iPhone HEIC photos are accepted, transcoded to JPEG for display, and keep GPS."""
+    from PIL import Image
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+    exif = Image.Exif()
+    exif[0x8825] = {1: "N", 2: (44.0, 15.0, 36.0), 3: "W", 4: (72.0, 34.0, 30.0)}
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 64), "white").save(buf, format="HEIF", exif=exif)
+    buf.seek(0)
+    r = client.post("/library/upload", data={"kind": "photo", "title": "iphone shot",
+        "file": (buf, "IMG_9.HEIC")}, content_type="multipart/form-data",
+        follow_redirects=True)
+    assert r.status_code == 200
+    with app.app_context():
+        a = Asset.query.filter_by(title="iphone shot").first()
+        assert a is not None
+        assert a.filename.endswith(".jpg")           # transcoded for universal display
+        assert a.content_type == "image/jpeg"
+        assert a.latitude and 44.2 < a.latitude < 44.3   # GPS carried over from the HEIC
+
+
+def test_library_corrupt_heic_is_graceful(client, app):
+    """A corrupt/fake HEIC must flash an error, not 500, and leave no dangling row."""
+    r = client.post("/library/upload", data={"kind": "photo",
+        "file": (io.BytesIO(b"not a real heic file"), "fake.heic")},
+        content_type="multipart/form-data", follow_redirects=True)
+    assert r.status_code == 200
+    assert "could not read" in r.get_data(as_text=True).lower()
+    with app.app_context():
+        assert Asset.query.count() == 0
+
+
+def test_library_rejects_non_media(client, app):
+    r = client.post("/library/upload", data={
+        "kind": "document", "file": (io.BytesIO(b"hello"), "notes.txt"),
+    }, content_type="multipart/form-data", follow_redirects=True)
+    assert "unsupported" in r.get_data(as_text=True).lower()
+    with app.app_context():
+        assert Asset.query.count() == 0
+
+
+def test_library_search_by_title(client):
+    client.post("/library/upload", data={"kind": "photo", "title": "Hydrant map north",
+        "file": (_gps_jpeg(), "h.jpg")}, content_type="multipart/form-data",
+        follow_redirects=True)
+    assert "Hydrant map north" in client.get("/library?q=hydrant").get_data(as_text=True)
+    assert "Hydrant map north" not in client.get("/library?q=zzznope").get_data(as_text=True)
+
+
+def test_builder_add_elements_and_reorder(client, app):
+    client.post("/occupancies/new", data={"name": "Builder Bldg"}, follow_redirects=True)
+    with app.app_context():
+        occ_id = Occupancy.query.filter_by(name="Builder Bldg").first().id
+    client.post(f"/occupancies/{occ_id}/elements", data={"kind": "map"}, follow_redirects=True)
+    client.post(f"/occupancies/{occ_id}/elements", data={"kind": "inspection",
+        "caption": "2026 inspection"}, follow_redirects=True)
+    with app.app_context():
+        els = (PreplanElement.query.filter_by(occupancy_id=occ_id)
+               .order_by(PreplanElement.position).all())
+        assert [e.kind for e in els] == ["map", "inspection"]
+        ids = [e.id for e in els]
+    client.post(f"/occupancies/{occ_id}/elements/reorder", json={"order": list(reversed(ids))})
+    with app.app_context():
+        els = (PreplanElement.query.filter_by(occupancy_id=occ_id)
+               .order_by(PreplanElement.position).all())
+        assert [e.kind for e in els] == ["inspection", "map"]
+
+
+def test_builder_upload_document_lands_in_library_not_as_element(client, app):
+    """A 'document' upload isn't a builder element type, so it goes to the library
+    without placing an (unlabeled) element on the pre-plan."""
+    client.post("/occupancies/new", data={"name": "Doc Bldg"}, follow_redirects=True)
+    with app.app_context():
+        occ_id = Occupancy.query.filter_by(name="Doc Bldg").first().id
+    client.post("/library/upload", data={"kind": "document", "occupancy_id": occ_id,
+        "file": (_gps_jpeg(), "manual.jpg")}, content_type="multipart/form-data",
+        follow_redirects=True)
+    with app.app_context():
+        assert Asset.query.filter_by(kind="document").count() == 1   # in the library
+        assert PreplanElement.query.filter_by(occupancy_id=occ_id).count() == 0  # not placed
+
+
+def test_asset_delete_removes_its_elements(client, app):
+    client.post("/occupancies/new", data={"name": "Attach Bldg"}, follow_redirects=True)
+    client.post("/library/upload", data={"kind": "floorplan", "title": "Level 1",
+        "file": (_gps_jpeg(), "l1.jpg")}, content_type="multipart/form-data",
+        follow_redirects=True)
+    with app.app_context():
+        occ_id = Occupancy.query.filter_by(name="Attach Bldg").first().id
+        asset_id = Asset.query.filter_by(title="Level 1").first().id
+    client.post(f"/occupancies/{occ_id}/elements",
+                data={"kind": "floorplan", "asset_id": asset_id}, follow_redirects=True)
+    with app.app_context():
+        assert PreplanElement.query.filter_by(asset_id=asset_id).count() == 1
+    client.post(f"/library/{asset_id}/delete", follow_redirects=True)
+    with app.app_context():
+        assert db.session.get(Asset, asset_id) is None
+        assert PreplanElement.query.filter_by(asset_id=asset_id).count() == 0
+
+
+def test_element_sequence_admin_only(app):
+    dept_id = make_dept_user(app, "Dept A", "adm@a.com", role="admin")
+    with app.app_context():
+        m = User(email="mem@a.com", name="M", role="member", department_id=dept_id)
+        m.set_password("pw")
+        db.session.add(m)
+        db.session.commit()
+    adm = app.test_client()
+    login(adm, "adm@a.com")
+    adm.post("/settings/element-sequence", data={"sequence": "sds,map,photo"},
+             follow_redirects=True)
+    with app.app_context():
+        seq = db.session.get(Department, dept_id).element_sequence
+        assert seq.startswith("sds,map,photo")      # given order kept
+        assert "floorplan" in seq and "inspection" in seq  # missing kinds appended
+    mem = app.test_client()
+    login(mem, "mem@a.com")
+    assert mem.post("/settings/element-sequence", data={"sequence": "map"}).status_code == 403
+
+
+def test_sandbox_blocks_library_upload(app):
+    c = app.test_client()
+    c.post("/sandbox")
+    r = c.post("/library/upload", data={"kind": "photo", "file": (_gps_jpeg(), "x.jpg")},
+              content_type="multipart/form-data", follow_redirects=True)
+    assert "sandbox" in r.get_data(as_text=True).lower()
+    with app.app_context():
+        dept = Department.query.filter_by(is_sandbox=True).first()
+        assert Asset.query.filter_by(department_id=dept.id).count() == 0
+
+
+def test_pdf_text_extracted_inline_not_queued(client, app):
+    """PDF text is cheap, so it's read at upload — PDFs are never OCR-queued."""
+    from pypdf import PdfWriter
+    buf = io.BytesIO()
+    w = PdfWriter()
+    w.add_blank_page(width=200, height=200)
+    w.write(buf)
+    buf.seek(0)
+    client.post("/library/upload", data={"kind": "document", "title": "blank doc",
+        "file": (buf, "doc.pdf")}, content_type="multipart/form-data", follow_redirects=True)
+    with app.app_context():
+        a = Asset.query.filter_by(title="blank doc").first()
+        assert a is not None and a.kind == "document"
+        assert a.ocr_pending is False
+
+
+@pytest.mark.skipif(not OCR_AVAILABLE, reason="tesseract binary not installed")
+def test_image_ocr_is_deferred_then_processed(client, app):
+    from PIL import Image, ImageDraw
+    buf = io.BytesIO()
+    img = Image.new("RGB", (420, 90), "white")
+    ImageDraw.Draw(img).text((10, 35), "SPRINKLER RISER ROOM", fill="black")
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    client.post("/library/upload", data={"kind": "photo", "title": "riser photo",
+        "file": (buf, "riser.png")}, content_type="multipart/form-data", follow_redirects=True)
+    # queued at upload, not OCR'd inline
+    with app.app_context():
+        a = Asset.query.filter_by(title="riser photo").first()
+        assert a.ocr_pending is True
+        assert a.text_content is None
+    # the scheduled task drains the queue and indexes the text
+    from app.assets import process_pending_ocr
+    with app.app_context():
+        assert process_pending_ocr() >= 1
+        a = Asset.query.filter_by(title="riser photo").first()
+        assert a.ocr_pending is False
+        assert a.text_content and "SPRINKLER" in a.text_content.upper()
 
 
 # --- occupancy CRUD (scoped to the logged-in department) ---------------------

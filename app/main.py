@@ -22,11 +22,13 @@ from werkzeug.utils import secure_filename
 from .extensions import db, limiter
 from .models import (
     Department, User, Occupancy, Contact, Hazard, Hydrant, FloorPlan, WmsLayer,
-    MapFeature, Announcement, MAP_FEATURE_CATEGORIES,
+    MapFeature, Announcement, Asset, PreplanElement, MAP_FEATURE_CATEGORIES,
+    ASSET_KINDS, PREPLAN_ELEMENT_KINDS, DEFAULT_ELEMENT_SEQUENCE,
 )
 from .scoping import dept_query, get_owned, get_owned_child
 from .auth import admin_required
 from .sandbox import sandbox_forbidden, purge_expired_sandboxes
+from .assets import save_asset, delete_asset_file, asset_file_path, ALLOWED_ASSET_EXTS, ext_of
 from . import gis_import
 
 ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "webp", "gif"}
@@ -508,6 +510,180 @@ def floorplan_delete(fp_id):
     db.session.commit()
     flash("Floor plan removed.", "success")
     return redirect(url_for("main.occupancy_detail", occ_id=occ_id))
+
+
+# --- asset library (shared department files) + pre-plan builder --------------
+
+def _dept_sequence():
+    """The department's builder element order (admin-defined), validated."""
+    raw = (current_user.department.element_sequence or DEFAULT_ELEMENT_SEQUENCE)
+    seq = [k for k in raw.split(",") if k in PREPLAN_ELEMENT_KINDS]
+    return seq or PREPLAN_ELEMENT_KINDS
+
+
+def _append_element(occ, kind, asset_id=None, caption=None):
+    """Add an element to the end of a pre-plan's ordered element list."""
+    last = (PreplanElement.query.filter_by(occupancy_id=occ.id)
+            .order_by(PreplanElement.position.desc()).first())
+    el = PreplanElement(occupancy_id=occ.id, kind=kind, asset_id=asset_id,
+                        caption=caption, position=(last.position + 1) if last else 0)
+    db.session.add(el)
+    db.session.commit()
+    return el
+
+
+@main_bp.get("/library")
+@login_required
+def library():
+    q = (request.args.get("q") or "").strip()
+    kind = request.args.get("kind") or ""
+    query = dept_query(Asset)
+    if kind in ASSET_KINDS:
+        query = query.filter_by(kind=kind)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(Asset.title.ilike(like),
+                                 Asset.text_content.ilike(like),
+                                 Asset.original_name.ilike(like)))
+    assets = query.order_by(Asset.uploaded_at.desc()).all()
+    return render_template("library.html", assets=assets, q=q, kind=kind,
+                           dept_sequence=",".join(_dept_sequence()))
+
+
+@main_bp.post("/settings/element-sequence")
+@admin_required
+def element_sequence_set():
+    """Admin sets the department's standard builder element order. Robust to typos:
+    keeps valid kinds in the given order, de-dupes, then appends any that are missing
+    so the sequence always covers every element type."""
+    raw = (request.form.get("sequence") or "").replace(" ", "").lower()
+    seen, seq = set(), []
+    for k in raw.split(","):
+        if k in PREPLAN_ELEMENT_KINDS and k not in seen:
+            seq.append(k)
+            seen.add(k)
+    for k in PREPLAN_ELEMENT_KINDS:
+        if k not in seen:
+            seq.append(k)
+    current_user.department.element_sequence = ",".join(seq)
+    db.session.commit()
+    flash("Standard element order updated.", "success")
+    return redirect(url_for("main.library"))
+
+
+@main_bp.post("/library/upload")
+@login_required
+@sandbox_forbidden
+def library_upload():
+    file = request.files.get("file")
+    kind = request.form.get("kind")
+    if kind not in ASSET_KINDS:
+        kind = "document"
+    back = request.referrer or url_for("main.library")
+    if not file or not file.filename:
+        flash("Choose a file to upload.", "error")
+        return redirect(back)
+    if ext_of(file.filename) not in ALLOWED_ASSET_EXTS:
+        flash("Unsupported file type. Upload an image (PNG/JPG/…) or a PDF.", "error")
+        return redirect(back)
+    try:
+        asset = save_asset(file, kind, current_user.department_id, current_user.id,
+                           title=_str(request.form, "title"))
+    except ValueError as exc:  # unreadable image (e.g. corrupt HEIC)
+        flash(str(exc), "error")
+        return redirect(back)
+    note = " — location read from the photo" if asset.latitude is not None else ""
+    flash(f"Uploaded “{asset.title}”{note}.", "success")
+    # Uploaded from the builder? Attach it straight onto that pre-plan (only the
+    # kinds the builder places — a plain "document" just lands in the library).
+    occ_id = _int(request.form, "occupancy_id")
+    if occ_id and kind in ("floorplan", "photo", "sds"):
+        occ = get_owned(Occupancy, occ_id)
+        _append_element(occ, kind, asset_id=asset.id)
+        return redirect(url_for("main.builder", occ_id=occ.id))
+    return redirect(url_for("main.library", kind=kind))
+
+
+@main_bp.get("/library/<int:asset_id>/file")
+@login_required
+def asset_file(asset_id):
+    """Serve a library file to an authenticated owner (never via a static URL)."""
+    asset = get_owned(Asset, asset_id)
+    path = asset_file_path(asset)
+    if not asset.filename or not os.path.exists(path):
+        abort(404)
+    return send_file(path)
+
+
+@main_bp.post("/library/<int:asset_id>/delete")
+@login_required
+def asset_delete(asset_id):
+    asset = get_owned(Asset, asset_id)
+    # Detach it from any pre-plans that use it, then remove the file + row.
+    PreplanElement.query.filter_by(asset_id=asset.id).delete(synchronize_session=False)
+    delete_asset_file(asset)
+    db.session.delete(asset)
+    db.session.commit()
+    flash("Asset removed from the library.", "success")
+    return redirect(request.referrer or url_for("main.library"))
+
+
+@main_bp.get("/occupancies/<int:occ_id>/builder")
+@login_required
+def builder(occ_id):
+    occ = get_owned(Occupancy, occ_id)
+    elements = (PreplanElement.query.filter_by(occupancy_id=occ.id)
+                .order_by(PreplanElement.position).all())
+    library_assets = dept_query(Asset).order_by(Asset.uploaded_at.desc()).all()
+    return render_template("builder.html", occupancy=occ, elements=elements,
+                           library_assets=library_assets, sequence=_dept_sequence())
+
+
+@main_bp.post("/occupancies/<int:occ_id>/elements")
+@login_required
+def element_add(occ_id):
+    occ = get_owned(Occupancy, occ_id)
+    kind = request.form.get("kind")
+    if kind not in PREPLAN_ELEMENT_KINDS:
+        flash("Unknown element type.", "error")
+        return redirect(url_for("main.builder", occ_id=occ.id))
+    if kind in ("floorplan", "photo", "sds"):  # these attach a library asset
+        asset_id = _int(request.form, "asset_id")
+        if not asset_id:
+            flash("Pick an item from the library, or upload one.", "error")
+            return redirect(url_for("main.builder", occ_id=occ.id))
+        asset = get_owned(Asset, asset_id)
+        _append_element(occ, kind, asset_id=asset.id)
+    else:  # map / inspection — no attached file
+        _append_element(occ, kind, caption=_str(request.form, "caption"))
+    return redirect(url_for("main.builder", occ_id=occ.id))
+
+
+@main_bp.post("/elements/<int:element_id>/delete")
+@login_required
+def element_delete(element_id):
+    el = get_owned_child(PreplanElement, element_id)
+    occ_id = el.occupancy_id
+    db.session.delete(el)
+    db.session.commit()
+    return redirect(url_for("main.builder", occ_id=occ_id))
+
+
+@main_bp.post("/occupancies/<int:occ_id>/elements/reorder")
+@login_required
+def elements_reorder(occ_id):
+    """Persist a new element order (drag-and-drop; JSON list of element ids)."""
+    occ = get_owned(Occupancy, occ_id)
+    ids = (request.get_json(silent=True) or {}).get("order") or []
+    elements = {e.id: e for e in PreplanElement.query.filter_by(occupancy_id=occ.id)}
+    pos = 0
+    for raw in ids:
+        el = elements.get(raw if isinstance(raw, int) else None)
+        if el:
+            el.position = pos
+            pos += 1
+    db.session.commit()
+    return jsonify(status="ok", count=pos)
 
 
 # --- map layers: WMS overlays + GIS import (admin) ---------------------------

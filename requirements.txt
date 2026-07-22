@@ -12,6 +12,13 @@ python-dotenv>=1.0         # load config (SECRET_KEY, DATABASE_URL) from .env
 pyshp>=2.3                 # Shapefile parsing
 pyproj>=3.6                # reproject projected Shapefiles (.prj) to WGS84 (bundles PROJ)
 
+# Asset library: file naming, GPS-from-photo, and text search
+Pillow>=10.0               # image handling + EXIF GPS extraction
+pillow-heif>=0.13          # read iPhone HEIC/HEIF photos (transcoded to JPEG on upload)
+pypdf>=4.0                 # extract embedded text from PDFs (pure-Python)
+pytesseract>=0.3           # OPTIONAL image OCR — needs the `tesseract` binary on the
+#                            host (auto-detected at runtime; skipped gracefully if absent)
+
 # WSGI server for production self-hosting (dev uses Flask's built-in server)
 gunicorn>=21.2
 

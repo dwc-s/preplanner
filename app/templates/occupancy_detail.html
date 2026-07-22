@@ -18,6 +18,7 @@
       {% if occupancy.full_address %}<p class="subtle">{{ occupancy.full_address }}</p>{% endif %}
     </div>
     <div class="actions">
+      <a class="btn btn-primary" href="{{ url_for('main.builder', occ_id=occupancy.id) }}">Build</a>
       <a class="btn" href="{{ url_for('main.occupancy_edit', occ_id=occupancy.id) }}">Edit</a>
       <form method="post" action="{{ url_for('main.occupancy_delete', occ_id=occupancy.id) }}"
             onsubmit="return confirm('Delete this pre-plan? This cannot be undone.');">

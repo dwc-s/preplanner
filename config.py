@@ -42,8 +42,10 @@ class Config:
     # Preserve field order in JSON responses (GeoJSON reads better that way).
     JSON_SORT_KEYS = False
 
-    # Cap uploads (floor-plan images, GIS files) at 25 MB.
-    MAX_CONTENT_LENGTH = 25 * 1024 * 1024
+    # Global cap on any request body (uploads: floor plans, library assets, GIS files).
+    # 5 GB — generous headroom for large floor-plan PDFs / imagery; the host's own disk
+    # quota is the practical limit below this.
+    MAX_CONTENT_LENGTH = 5 * 1024 ** 3
 
     # Where uploaded floor-plan images live. Kept OUT of static/ so they are only
     # reachable through an authenticated, ownership-checked route.

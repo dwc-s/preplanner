@@ -104,6 +104,31 @@ created in step 3.
 
 ---
 
+## 7. Scheduled maintenance (recommended)
+
+Two background jobs keep the app tidy — both are bundled in one script:
+
+- **`flask ocr-pending`** — OCRs photos uploaded to the asset library. OCR is the
+  slow step, so it runs here rather than blocking uploads. (No-op without `tesseract`.)
+- **`flask purge-sandboxes`** — deletes expired "try the sandbox" demo workspaces.
+
+In the **Tasks** tab, add a **Scheduled task** running:
+
+```
+/home/<username>/preplanner/deploy/scheduled_tasks.sh
+```
+
+The **free** tier runs one task per day (fine — photo text search just lags a bit);
+**paid** tiers can run it every few minutes. The script auto-detects the project and
+virtualenv; override with `PREPLANNER_ROOT` / `PREPLANNER_VENV` if your paths differ.
+
+**OCR engine (optional).** Image text search needs the `tesseract` binary — already
+present on PythonAnywhere (check with `tesseract --version`). A self-host installs it
+with `apt install tesseract-ocr`. Without it, everything works except image OCR, and
+the queue simply waits until a capable host drains it.
+
+---
+
 ## The `.env` file
 
 `config.py` loads `~/preplanner/.env` on startup (via python-dotenv). It holds:
