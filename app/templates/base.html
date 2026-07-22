@@ -16,6 +16,7 @@
   <script src="{{ url_for('static', filename='vendor/dexie/dexie.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/store.js') }}"></script>
   <script src="{{ url_for('static', filename='js/autosave.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/dialog.js') }}"></script>
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -45,13 +46,15 @@
     <nav class="sidebar-nav">
       <a class="btn btn-primary sidebar-new" href="{{ url_for('main.occupancy_editor') }}?new=1">+ New Pre-Plan</a>
       <a href="{{ url_for('main.map_view') }}" class="{{ 'active' if ep == 'main.map_view' }}">Map</a>
+      {% if current_user.is_admin or current_user.is_officer %}
+      <a href="{{ url_for('main.operational_map') }}" class="{{ 'active' if ep == 'main.operational_map' }}">Operational Map</a>
+      {% endif %}
       <a href="{{ url_for('main.occupancy_list') }}" class="{{ 'active' if ep == 'main.occupancy_list' }}">Occupancies</a>
       <a href="{{ url_for('main.hydrant_list') }}" class="{{ 'active' if ep == 'main.hydrant_list' }}">Hydrants</a>
       <a href="{{ url_for('main.library') }}" class="{{ 'active' if ep == 'main.library' }}">Library</a>
-      <a href="{{ url_for('auth.roster') }}" class="{{ 'active' if ep == 'auth.roster' }}">Roster</a>
+      <a href="{{ url_for('auth.users_list') }}" class="{{ 'active' if ep == 'auth.users_list' }}">Roster</a>
       <a href="{{ url_for('auth.preferences') }}" class="{{ 'active' if ep == 'auth.preferences' }}">Preferences</a>
       {% if current_user.is_admin %}
-      <a href="{{ url_for('auth.users_list') }}" class="{{ 'active' if ep == 'auth.users_list' }}">Users</a>
       <a href="{{ url_for('main.overlays') }}" class="{{ 'active' if ep == 'main.overlays' }}">Layers</a>
       {% endif %}
     </nav>

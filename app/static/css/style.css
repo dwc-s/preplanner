@@ -56,11 +56,14 @@ a:hover { text-decoration: underline; }
   display: flex; align-items: center; gap: .8rem;
   min-height: var(--topbar-h);
   padding: .4rem 1rem;
-  background: var(--red);
+  background: linear-gradient(to right, var(--red), var(--bg));
   color: #fff;
   box-shadow: var(--shadow);
   position: sticky; top: 0; z-index: 1000;
 }
+/* Logged-out nav sits on the light end of the gradient — dark text there. */
+.topbar .nav a, .topbar .nav-inline-form button { color: var(--ink); }
+.topbar .nav a:hover, .topbar .nav-inline-form button:hover { background: rgba(0,0,0,.06); }
 .sidebar-toggle {
   background: transparent; border: 0; color: #fff; cursor: pointer;
   font-size: 1.5rem; line-height: 1; padding: .1rem .45rem;
@@ -131,7 +134,9 @@ a:hover { text-decoration: underline; }
 .sidebar-nav a { color: var(--ink); padding: .55rem .7rem; border-radius: var(--radius); }
 .sidebar-nav a:hover { background: var(--bg); text-decoration: none; }
 .sidebar-nav a.active { background: #fdecea; color: var(--red); font-weight: 600; }
-.sidebar-new { text-align: center; margin-bottom: .5rem; }
+/* The primary "+ New Pre-Plan" button — keep white text (outspecify .sidebar-nav a). */
+.sidebar-nav a.sidebar-new { text-align: center; margin-bottom: .5rem; color: #fff; }
+.sidebar-nav a.sidebar-new:hover { background: var(--red-dark); color: #fff; }
 .sidebar-foot { border-top: 1px solid var(--line); padding: .7rem .6rem; display: grid; gap: .55rem; }
 .sidebar-user { color: var(--muted); font-size: .85rem; padding: .2rem .1rem; border-radius: var(--radius); }
 .sidebar-user:hover { color: var(--ink); text-decoration: none; }
@@ -270,6 +275,16 @@ th[data-sort].sort-desc::after { content: " \25BC"; font-size: .7em; }
   border-radius: 999px; vertical-align: middle; margin-left: .35rem; font-weight: 600; }
 .field-radio { display: flex; align-items: center; gap: .5rem; }
 
+/* App-native confirm/alert dialog (dialog.js). */
+.app-dialog { border: 0; border-radius: var(--radius); padding: 0; color: var(--ink);
+  background: var(--card); box-shadow: 0 12px 44px rgba(0,0,0,.28);
+  max-width: 420px; width: calc(100% - 2rem); }
+.app-dialog::backdrop { background: rgba(0,0,0,.45); }
+.app-dialog-box { padding: 1.2rem 1.3rem 1.05rem; }
+.app-dialog-title { margin: 0 0 .4rem; font-size: 1.1rem; }
+.app-dialog-msg { margin: 0 0 1.15rem; line-height: 1.5; }
+.app-dialog-actions { display: flex; justify-content: flex-end; gap: .5rem; }
+
 /* --- asset library --- */
 .lib-upload { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .lib-upload select, .lib-upload input[type=text] { padding: .4rem .5rem;
@@ -362,7 +377,12 @@ th[data-sort].sort-desc::after { content: " \25BC"; font-size: .7em; }
 
 /* --- forms --- */
 .record-form fieldset { border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); margin: 0 0 1.1rem; padding: 1rem 1.1rem 1.2rem; box-shadow: var(--shadow); }
-.record-form legend { font-weight: 700; padding: 0 .4rem; color: var(--red-dark); }
+/* Float the legend to width:100% so it renders as a block INSIDE the fieldset (below
+   the top border) rather than straddling it. Grid/flex siblings avoid floats instead
+   of clearing them, so force everything after the legend below it. */
+.record-form legend { float: left; width: 100%; margin: 0 0 .8rem; padding: 0;
+  font-weight: 700; color: var(--red-dark); }
+.record-form fieldset > *:not(legend) { clear: both; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: .8rem; }
 .field { display: flex; flex-direction: column; gap: .25rem; font-size: .85rem; }
 .field span { color: var(--muted); }

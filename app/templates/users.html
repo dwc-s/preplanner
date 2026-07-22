@@ -1,21 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Users · Pre-Planner{% endblock %}
+{% block title %}Roster · Pre-Planner{% endblock %}
 
 {% block content %}
   <div class="page-head">
-    <h1>Users — {{ current_user.department.name }}</h1>
+    <h1>Roster — {{ current_user.department.name }}</h1>
   </div>
 
   <table class="table">
     <thead>
-      <tr><th>Email</th><th>Name</th><th>Rank</th><th>Role</th><th>Commanding officer</th><th>Status</th><th></th></tr>
+      <tr><th>Name</th><th>Email</th><th>Rank</th><th>Role</th><th>Commanding officer</th><th>Status</th>{% if current_user.is_admin %}<th></th>{% endif %}</tr>
     </thead>
     <tbody>
-      {% for u in users %}
+      {# Members see the active roster; admins additionally see deactivated accounts. #}
+      {% for u in users if u.is_active or current_user.is_admin %}
         <tr>
-          <td>{{ u.email }}</td>
           <td>{{ u.name or "—" }}</td>
+          <td>{{ u.email }}</td>
           <td>
+            {% if can_edit_ranks %}
             <form method="post" action="{{ url_for('auth.user_set_rank', user_id=u.id) }}"
                   data-autosave data-autosave-compact>
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -26,9 +28,10 @@
                 {% endfor %}
               </select>
             </form>
+            {% else %}{{ u.rank or "—" }}{% endif %}
           </td>
           <td>
-            {% if current_user.is_superuser or u.role != 'superuser' %}
+            {% if current_user.is_admin and (current_user.is_superuser or u.role != 'superuser') %}
             <form method="post" action="{{ url_for('auth.user_set_role', user_id=u.id) }}"
                   data-autosave data-autosave-compact>
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -43,6 +46,7 @@
             {% else %}{{ u.role }}{% endif %}
           </td>
           <td>
+            {% if current_user.is_admin %}
             <form method="post" action="{{ url_for('auth.user_set_co', user_id=u.id) }}"
                   data-autosave data-autosave-compact>
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -53,17 +57,21 @@
                 {% endfor %}
               </select>
             </form>
+            {% else %}{{ (u.commanding_officer.name or u.commanding_officer.email) if u.commanding_officer else "—" }}{% endif %}
           </td>
           <td>{% if u.is_active %}Active{% else %}<span class="sev sev-high">Inactive</span>{% endif %}</td>
+          {% if current_user.is_admin %}
           <td>
             {% if u.id != current_user.id %}
               <div style="display:flex; gap:.4rem; flex-wrap:wrap;">
+                {% if current_user.is_superuser %}
                 <form method="post" action="{{ url_for('auth.user_toggle', user_id=u.id) }}">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button class="btn btn-ghost btn-sm" type="submit">{{ "Deactivate" if u.is_active else "Reactivate" }}</button>
                 </form>
+                {% endif %}
                 <form method="post" action="{{ url_for('auth.user_reset_password', user_id=u.id) }}"
-                      onsubmit="return confirm('Generate a new temporary password for {{ u.email }}?');">
+                      data-confirm="Generate a new temporary password for {{ u.email }}?">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button class="btn btn-ghost btn-sm" type="submit">Reset password</button>
                 </form>
@@ -72,11 +80,16 @@
               <span class="subtle">you</span>
             {% endif %}
           </td>
+          {% endif %}
         </tr>
       {% endfor %}
     </tbody>
   </table>
+  {% if not current_user.is_admin %}
+  <p class="hint">Ranks and roles are managed by your department's officers and admins.</p>
+  {% endif %}
 
+  {% if current_user.is_admin %}
   <section class="card card-wide" style="margin-top:1rem;">
     <h2>Add crew member</h2>
     {% set fv = form|default({}) %}
@@ -95,6 +108,7 @@
       <input type="password" name="password" placeholder="Temporary password" required>
       <button class="btn" type="submit">Add user</button>
     </form>
-    <p class="hint">New members should change their password after first sign-in (password self-service is on the roadmap).</p>
+    <p class="hint">New members should change their password after first sign-in.</p>
   </section>
+  {% endif %}
 {% endblock %}

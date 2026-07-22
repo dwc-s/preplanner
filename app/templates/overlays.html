@@ -18,7 +18,7 @@
               <td>{{ "%.0f%%"|format((w.opacity or 0.7) * 100) }}</td>
               <td>
                 <form method="post" action="{{ url_for('main.overlay_delete', layer_id=w.id) }}"
-                      onsubmit="return confirm('Remove this overlay?');">
+                      data-confirm="Remove this overlay?">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button class="btn btn-ghost btn-sm" type="submit">✕</button>
                 </form>

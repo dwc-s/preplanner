@@ -8,17 +8,24 @@ sign-up stub, and the throwaway sandbox (see app/sandbox.py).
 """
 import secrets
 import string
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, abort, jsonify
+    Blueprint, render_template, request, redirect, url_for, flash, abort,
+    jsonify, current_app, session
 )
 from flask_login import (
     login_user, logout_user, login_required, current_user
 )
+from flask_mail import Message
+from werkzeug.security import generate_password_hash, check_password_hash
 
-from .extensions import db, limiter
-from .models import User, USER_ROLES, FIRE_RANKS, OFFICER_REVIEW_POLICIES
+from .extensions import db, limiter, mail
+from .models import (
+    User, PasswordResetCode, USER_ROLES, FIRE_RANKS, OFFICER_REVIEW_POLICIES,
+    RANK_EDIT_POLICIES
+)
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -84,6 +91,86 @@ def register():
     return render_template("register.html")
 
 
+# --- self-service password reset (email code) --------------------------------
+
+def _naive_utcnow():
+    # SQLite stores naive datetimes; compare like-with-like to avoid tz errors.
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _send_reset_code(user):
+    """Generate a fresh 6-digit code (15-min, single-use), store its hash, email it.
+    Prior unused codes for the user are invalidated."""
+    code = f"{secrets.randbelow(1000000):06d}"
+    PasswordResetCode.query.filter_by(user_id=user.id, used=False).update({"used": True})
+    db.session.add(PasswordResetCode(
+        user_id=user.id, code_hash=generate_password_hash(code),
+        expires_at=_naive_utcnow() + timedelta(minutes=15)))
+    db.session.commit()
+    body = (f"Your Pre-Planner password reset code is: {code}\n\n"
+            f"Enter it within 15 minutes to set a new password. "
+            f"If you didn't request this, you can ignore this email.")
+    try:
+        mail.send(Message("Pre-Planner password reset code",
+                          recipients=[user.email], body=body))
+    except Exception:  # don't leak SMTP errors to the user; log them
+        current_app.logger.exception("Failed to send password-reset email")
+    if current_app.config.get("MAIL_SUPPRESS_SEND"):  # dev: no SMTP, so surface the code
+        current_app.logger.warning("Password-reset code for %s: %s", user.email, code)
+
+
+@auth_bp.route("/forgot-password", methods=["GET", "POST"])
+@limiter.limit("5 per hour; 20 per day", methods=["POST"])
+def forgot_password():
+    if current_user.is_authenticated:
+        return redirect(url_for("main.index"))
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        user = User.query.filter_by(email=email, is_active=True).first()
+        if user:
+            _send_reset_code(user)
+        # Generic response either way, so a stranger can't probe which emails exist.
+        flash("If that email is registered, a reset code is on its way — it expires "
+              "in 15 minutes.", "success")
+        # Carry the email in the session (not the URL) to prefill the reset form —
+        # keeps addresses out of browser history and server access logs.
+        session["reset_email"] = email
+        return redirect(url_for("auth.reset_password"))
+    return render_template("forgot_password.html")
+
+
+@auth_bp.route("/reset-password", methods=["GET", "POST"])
+@limiter.limit("10 per hour", methods=["POST"])
+def reset_password():
+    if current_user.is_authenticated:
+        return redirect(url_for("main.index"))
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        code = (request.form.get("code") or "").strip()
+        new = request.form.get("new_password") or ""
+        confirm = request.form.get("confirm_password") or ""
+        user = User.query.filter_by(email=email, is_active=True).first()
+        rc = (PasswordResetCode.query
+              .filter_by(user_id=user.id, used=False)
+              .order_by(PasswordResetCode.id.desc()).first()) if user else None
+        if len(new) < MIN_PASSWORD_LENGTH:
+            flash(f"New password must be at least {MIN_PASSWORD_LENGTH} characters.", "error")
+        elif new != confirm:
+            flash("New passwords do not match.", "error")
+        elif not (rc and rc.expires_at > _naive_utcnow()
+                  and check_password_hash(rc.code_hash, code)):
+            flash("That code is invalid or has expired.", "error")
+        else:
+            user.set_password(new)
+            rc.used = True
+            db.session.commit()
+            session.pop("reset_email", None)
+            flash("Password updated — you can sign in now.", "success")
+            return redirect(url_for("auth.login"))
+        return render_template("reset_password.html", email=email)
+    return render_template("reset_password.html", email=session.get("reset_email", ""))
+
+
 @auth_bp.post("/logout")
 @login_required
 def logout():
@@ -92,15 +179,21 @@ def logout():
     return redirect(url_for("main.index"))
 
 
-# --- User management (admin only, scoped to the admin's own department) ------
+# --- roster + user management (scoped to the caller's department) ------------
 
 @auth_bp.get("/users")
-@admin_required
+@login_required
 def users_list():
-    users = (User.query
-             .filter_by(department_id=current_user.department_id)
-             .order_by(User.email).all())
-    return render_template("users.html", users=users)
+    """The merged roster/users page — everyone sees it; action controls are gated by
+    role, and rank editing by the department's rank-edit policy."""
+    order = {r: i for i, r in enumerate(FIRE_RANKS)}
+    users = (User.query.filter_by(department_id=current_user.department_id).all())
+    users.sort(key=lambda u: (not u.is_active,
+                              order.get(u.rank, len(FIRE_RANKS)),
+                              (u.name or u.email).lower()))
+    return render_template(
+        "users.html", users=users,
+        can_edit_ranks=current_user.department.can_edit_ranks(current_user))
 
 
 @auth_bp.post("/users")
@@ -144,20 +237,17 @@ def user_create():
 
 
 @auth_bp.post("/users/<int:user_id>/toggle")
-@admin_required
+@superuser_required
 def user_toggle(user_id):
-    """Activate/deactivate a crew member (soft delete — preserves history)."""
+    """Activate/deactivate a crew member — the department's membership control,
+    restricted to the superuser (deactivation is the app's soft 'remove'). The
+    self-check keeps the department from ever losing its last active superuser: only a
+    superuser can act, and they can't deactivate themselves."""
     user = (User.query
             .filter_by(id=user_id, department_id=current_user.department_id)
             .first_or_404())
-    deactivating_last_superuser = (
-        user.is_active and user.role == "superuser"
-        and User.query.filter_by(department_id=user.department_id, role="superuser",
-                                 is_active=True).filter(User.id != user.id).count() == 0)
     if user.id == current_user.id:
         flash("You can't deactivate your own account.", "error")
-    elif deactivating_last_superuser:
-        flash("You can't deactivate the department's only superuser.", "error")
     else:
         user.is_active = not user.is_active
         db.session.commit()
@@ -182,9 +272,12 @@ def user_reset_password(user_id):
 
 
 @auth_bp.post("/users/<int:user_id>/rank")
-@admin_required
+@login_required
 def user_set_rank(user_id):
-    """Set a crew member's fire-service rank."""
+    """Set a crew member's fire-service rank — allowed per the department's rank-edit
+    policy (admins always; officers/all members when the superuser widens it)."""
+    if not current_user.department.can_edit_ranks(current_user):
+        abort(403)
     user = (User.query
             .filter_by(id=user_id, department_id=current_user.department_id)
             .first_or_404())
@@ -246,18 +339,12 @@ def user_set_role(user_id):
     return redirect(url_for("auth.users_list"))
 
 
-# --- department roster (visible to every signed-in member) -------------------
+# --- roster (merged into the users page; keep the old URL working) -----------
 
 @auth_bp.get("/roster")
 @login_required
 def roster():
-    members = (User.query
-               .filter_by(department_id=current_user.department_id, is_active=True)
-               .all())
-    order = {r: i for i, r in enumerate(FIRE_RANKS)}
-    members.sort(key=lambda u: (order.get(u.rank, len(FIRE_RANKS)),
-                                (u.name or u.email).lower()))
-    return render_template("roster.html", members=members)
+    return redirect(url_for("auth.users_list"))
 
 
 # --- self-service (Preferences) ----------------------------------------------
@@ -303,4 +390,18 @@ def set_review_policy():
         flash("Review policy updated.", "success")
     else:
         flash("Unknown review policy.", "error")
+    return redirect(url_for("auth.preferences"))
+
+
+@auth_bp.post("/preferences/rank-edit-policy")
+@superuser_required
+def set_rank_edit_policy():
+    """Superuser sets who may edit members' ranks on the roster."""
+    policy = request.form.get("rank_edit_policy") or ""
+    if policy in RANK_EDIT_POLICIES:
+        current_user.department.rank_edit_policy = policy
+        db.session.commit()
+        flash("Roster permissions updated.", "success")
+    else:
+        flash("Unknown policy.", "error")
     return redirect(url_for("auth.preferences"))

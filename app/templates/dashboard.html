@@ -107,7 +107,7 @@
                 · {{ a.created_at.strftime('%b %d') if a.created_at else '' }}</span>
               {% if current_user.is_admin %}
               <form method="post" action="{{ url_for('main.announcement_delete', ann_id=a.id) }}"
-                    onsubmit="return confirm('Remove this announcement?')">
+                    data-confirm="Remove this announcement?">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button class="btn btn-sm btn-ghost" type="submit" title="Remove">&times;</button>
               </form>

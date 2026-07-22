@@ -57,3 +57,20 @@ class Config:
     UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER") or os.path.join(
         basedir, "instance", "uploads"
     )
+
+    # Email (self-service password-reset codes). Defaults suit Porkbun SMTP; supply
+    # MAIL_USERNAME (the full email address) and MAIL_PASSWORD (the email-specific
+    # password, NOT your Porkbun account password) via .env. With no credentials,
+    # sending is suppressed and the code is logged (fine for local dev).
+    MAIL_SERVER = os.environ.get("MAIL_SERVER", "smtp.porkbun.com")
+    MAIL_PORT = int(os.environ.get("MAIL_PORT", "587"))
+    MAIL_USE_TLS = os.environ.get("MAIL_USE_TLS", "true").lower() in ("1", "true", "yes")
+    MAIL_USE_SSL = os.environ.get("MAIL_USE_SSL", "false").lower() in ("1", "true", "yes")
+    MAIL_USERNAME = os.environ.get("MAIL_USERNAME")
+    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
+    MAIL_DEFAULT_SENDER = (os.environ.get("MAIL_DEFAULT_SENDER")
+                           or os.environ.get("MAIL_USERNAME"))
+    MAIL_SUPPRESS_SEND = os.environ.get(
+        "MAIL_SUPPRESS_SEND",
+        "false" if os.environ.get("MAIL_USERNAME") else "true"
+    ).lower() in ("1", "true", "yes")

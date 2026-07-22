@@ -168,20 +168,20 @@
     var hzAdd = document.getElementById("hz-add");
     if (hzAdd) hzAdd.onclick = function () {
       var t = document.getElementById("hz-type").value;
-      if (!t) { alert("Hazard type is required."); return; }
+      if (!t) { Dialog.alert("Hazard type is required."); return; }
       Store.create("hazard", { hazard_type: t, severity: val("hz-sev"), location: val("hz-loc"), description: val("hz-desc") }, occ.uuid);
     };
     var ctAdd = document.getElementById("ct-add");
     if (ctAdd) ctAdd.onclick = function () {
       var n = document.getElementById("ct-name").value;
-      if (!n) { alert("Contact name is required."); return; }
+      if (!n) { Dialog.alert("Contact name is required."); return; }
       Store.create("contact", { name: n, role: val("ct-role"), phone: val("ct-phone"), email: val("ct-email") }, occ.uuid);
     };
     childWrap.querySelectorAll("[data-del-hazard]").forEach(function (b) {
-      b.onclick = function () { if (confirm("Remove this hazard?")) Store.remove("hazard", b.getAttribute("data-del-hazard")); };
+      b.onclick = function () { Dialog.confirm("Remove this hazard?", { danger: true }).then(function (ok) { if (ok) Store.remove("hazard", b.getAttribute("data-del-hazard")); }); };
     });
     childWrap.querySelectorAll("[data-del-contact]").forEach(function (b) {
-      b.onclick = function () { if (confirm("Remove this contact?")) Store.remove("contact", b.getAttribute("data-del-contact")); };
+      b.onclick = function () { Dialog.confirm("Remove this contact?", { danger: true }).then(function (ok) { if (ok) Store.remove("contact", b.getAttribute("data-del-contact")); }); };
     });
 
     // Inline edit: swap a row to inputs; Save writes to the store (which re-renders).
@@ -199,7 +199,7 @@
           '<button class="btn btn-ghost btn-sm e-cancel">Cancel</button></td>';
         tr.querySelector(".e-save").onclick = function () {
           var t = tr.querySelector(".e-type").value;
-          if (!t) { alert("Hazard type is required."); return; }
+          if (!t) { Dialog.alert("Hazard type is required."); return; }
           Store.update("hazard", h.uuid, { hazard_type: t,
             severity: tr.querySelector(".e-sev").value || null,
             location: tr.querySelector(".e-loc").value || null,
@@ -222,7 +222,7 @@
           '<button class="btn btn-ghost btn-sm e-cancel">Cancel</button></td>';
         tr.querySelector(".e-save").onclick = function () {
           var n = tr.querySelector(".e-name").value;
-          if (!n) { alert("Contact name is required."); return; }
+          if (!n) { Dialog.alert("Contact name is required."); return; }
           Store.update("contact", c.uuid, { name: n,
             role: tr.querySelector(".e-role").value || null,
             phone: tr.querySelector(".e-phone").value || null,

@@ -26,7 +26,7 @@
               <div style="display:flex; gap:.4rem; align-items:center;">
                 <a class="btn btn-ghost btn-sm" href="{{ url_for('main.hydrant_edit', hydrant_id=h.id) }}">Edit</a>
                 <form method="post" action="{{ url_for('main.hydrant_delete', hydrant_id=h.id) }}"
-                      onsubmit="return confirm('Remove this hydrant?');">
+                      data-confirm="Remove this hydrant?">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button class="btn btn-ghost btn-sm" type="submit">✕</button>
                 </form>

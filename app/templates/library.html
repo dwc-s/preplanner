@@ -66,7 +66,7 @@
         {% if a.latitude is not none %}<span class="gps-badge" title="Has GPS location">📍</span>{% endif %}
       </div>
       <form method="post" action="{{ url_for('main.asset_delete', asset_id=a.id) }}"
-            onsubmit="return confirm('Remove this asset from the library?')">
+            data-confirm="Remove this asset from the library?">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-sm btn-ghost" type="submit">Remove</button>
       </form>

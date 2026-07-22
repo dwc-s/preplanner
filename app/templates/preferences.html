@@ -41,6 +41,23 @@
         <div><button class="btn btn-primary" type="submit">Save policy</button></div>
       </form>
     </section>
+
+    <section class="card">
+      <h2>Roster permissions <span class="pref-badge">Superuser</span></h2>
+      <p class="subtle">Who may edit members' ranks on the Roster page. (Admins &amp;
+        superuser always can.)</p>
+      <form method="post" action="{{ url_for('auth.set_rank_edit_policy') }}" class="pref-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% for p in RANK_EDIT_POLICIES %}
+        <label class="field-radio">
+          <input type="radio" name="rank_edit_policy" value="{{ p }}"
+                 {% if current_user.department.rank_edit_policy == p %}checked{% endif %}>
+          <span>{{ RANK_EDIT_POLICY_LABELS[p] }}</span>
+        </label>
+        {% endfor %}
+        <div><button class="btn btn-primary" type="submit">Save permissions</button></div>
+      </form>
+    </section>
     {% endif %}
 
     {# --- Class-gated placeholder (grows later) --- #}

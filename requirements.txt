@@ -5,6 +5,7 @@ Flask-Login>=0.6            # session authentication
 Flask-WTF>=1.2             # CSRF protection + login/user forms
 Flask-Migrate>=4.0         # Alembic schema migrations
 Flask-Limiter>=3.5         # login rate limiting
+Flask-Mail>=0.9            # password-reset emails (SMTP, e.g. Porkbun)
 email-validator>=2.0       # WTForms email field validation
 python-dotenv>=1.0         # load config (SECRET_KEY, DATABASE_URL) from .env
 

@@ -11,7 +11,7 @@ from flask_login import LoginManager
 from flask_wtf.csrf import CSRFProtect
 from flask_migrate import Migrate
 
-from .extensions import db, limiter
+from .extensions import db, limiter, mail
 from . import models
 
 # Extension singletons (bound to the app inside create_app).
@@ -57,6 +57,7 @@ def create_app(config_object="config.Config"):
     csrf.init_app(app)
     migrate.init_app(app, db)
     limiter.init_app(app)
+    mail.init_app(app)
 
     from .main import main_bp
     from .api import api_bp
@@ -98,6 +99,8 @@ def create_app(config_object="config.Config"):
             "PREPLAN_STATUSES": models.PREPLAN_STATUSES,
             "OFFICER_REVIEW_POLICIES": models.OFFICER_REVIEW_POLICIES,
             "OFFICER_REVIEW_POLICY_LABELS": models.OFFICER_REVIEW_POLICY_LABELS,
+            "RANK_EDIT_POLICIES": models.RANK_EDIT_POLICIES,
+            "RANK_EDIT_POLICY_LABELS": models.RANK_EDIT_POLICY_LABELS,
             "ASSET_KINDS": models.ASSET_KINDS,
             "ASSET_KIND_LABELS": models.ASSET_KIND_LABELS,
             "PREPLAN_ELEMENT_KINDS": models.PREPLAN_ELEMENT_KINDS,

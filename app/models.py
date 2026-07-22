@@ -103,6 +103,15 @@ OFFICER_REVIEW_POLICY_LABELS = {
     "auto_approve": "Automatically approved (no review)",
 }
 
+# Who may edit members' ranks on the roster (Department.rank_edit_policy), an escalating
+# scale the superuser sets. Superusers and admins may always edit ranks.
+RANK_EDIT_POLICIES = ["admins", "officers", "all"]
+RANK_EDIT_POLICY_LABELS = {
+    "admins": "Admins & superuser only",
+    "officers": "Officers and up",
+    "all": "Any member",
+}
+
 # Shared asset library (Asset.kind) and the pre-plan builder.
 ASSET_KINDS = ["floorplan", "photo", "sds", "document"]
 # Element types the builder can place onto a pre-plan, in the default order an admin
@@ -187,10 +196,25 @@ class Department(db.Model):
     officer_review_policy = db.Column(
         db.String(20), nullable=False, server_default="commanding_officer"
     )
+    # Who may edit members' ranks on the roster (see RANK_EDIT_POLICIES).
+    rank_edit_policy = db.Column(
+        db.String(20), nullable=False, server_default="admins"
+    )
 
     users = db.relationship(
         "User", backref="department", cascade="all, delete-orphan"
     )
+
+    def can_edit_ranks(self, user):
+        """Whether ``user`` may edit members' ranks, per this department's policy.
+        Admins/superusers always may."""
+        if user.is_admin:
+            return True
+        if self.rank_edit_policy == "all":
+            return True
+        if self.rank_edit_policy == "officers":
+            return user.is_officer
+        return False
 
     def superuser(self):
         """The department's top authority ("the chief") for review routing — the
@@ -249,6 +273,25 @@ class User(UserMixin, db.Model):
 
     def __repr__(self):
         return f"<User {self.id} {self.email!r} ({self.role})>"
+
+
+class PasswordResetCode(db.Model):
+    """A single-use, short-lived code emailed to a user to reset their password.
+    Only the hash is stored; expiry/used are checked on redemption."""
+
+    __tablename__ = "password_reset_code"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("app_user.id", name="fk_reset_code_user"),
+        nullable=False, index=True,
+    )
+    code_hash = db.Column(db.String(255), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)  # naive UTC
+    used = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, default=_utcnow)
+
+    user = db.relationship("User")
 
 
 # --- Central record ----------------------------------------------------------

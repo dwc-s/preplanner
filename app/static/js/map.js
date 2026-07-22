@@ -6,6 +6,10 @@
 (function () {
   "use strict";
 
+  // "browse" = the lean read-only area map (/map); otherwise the full "operate" map
+  // (/map/operate) with drawing/symbol/hydrant tools.
+  var BROWSE = window.MAP_MODE === "browse";
+
   var FEATURE_COLORS = { "Access Point": "#1c7ed6", "Route": "#e8590c",
     "Hazard Zone": "#e03131", "Custom": "#7048e8", "Symbol": "#495057" };
   var CATEGORIES = ["Access Point", "Route", "Hazard Zone", "Custom", "Symbol"];
@@ -133,13 +137,15 @@
   }
   map.on("moveend", saveView);
 
+  // Browse shows only Occupancies, Zones and Hydrants; the rest are operate-only.
   var occupancyLayer = L.layerGroup().addTo(map);
-  var footprintLayer = L.layerGroup().addTo(map);
   var hydrantLayer = L.layerGroup().addTo(map);
-  var accessLayer = L.layerGroup().addTo(map);
-  var routeLayer = L.layerGroup().addTo(map);
   var zoneLayer = L.layerGroup().addTo(map);
-  var symbolLayer = L.layerGroup().addTo(map);
+  var footprintLayer = L.layerGroup();
+  var accessLayer = L.layerGroup();
+  var routeLayer = L.layerGroup();
+  var symbolLayer = L.layerGroup();
+  if (!BROWSE) [footprintLayer, accessLayer, routeLayer, symbolLayer].forEach(function (g) { g.addTo(map); });
 
   var rendered = {};  // map_feature uuid -> { layer, group, sig }
 
@@ -149,12 +155,22 @@
     footprintLayer.clearLayers();
     occs.forEach(function (o) {
       if (o.latitude != null && o.longitude != null) {
-        occupancyLayer.addLayer(L.marker([o.latitude, o.longitude]).bindPopup(
-          '<div class="popup"><h3>' + esc(o.name || "Unnamed") + "</h3>" +
+        var m = L.marker([o.latitude, o.longitude]);
+        var summary = '<div class="popup"><h3>' + esc(o.name || "Unnamed") + "</h3>" +
           (o.occupancy_type ? "<div>" + esc(o.occupancy_type) + "</div>" : "") +
-          (o.construction_type ? "<div>" + esc(o.construction_type) + "</div>" : "") +
-          '<p><a href="/occupancies/edit?u=' + encodeURIComponent(o.uuid) + '">Open pre-plan &rarr;</a></p>' +
-          "</div>"));
+          (o.construction_type ? "<div>" + esc(o.construction_type) + "</div>" : "");
+        var url = o.id ? "/occupancies/" + o.id
+                       : "/occupancies/edit?u=" + encodeURIComponent(o.uuid);
+        if (BROWSE) {
+          // Summary on hover; clicking the icon opens the full pre-plan.
+          m.bindTooltip(summary + "</div>", { direction: "top", offset: [0, -10], opacity: 1 });
+          m.on("click", function () { window.location = url; });
+        } else {
+          m.bindPopup(summary +
+            '<p><a href="/occupancies/edit?u=' + encodeURIComponent(o.uuid) +
+            '">Open pre-plan &rarr;</a></p></div>');
+        }
+        occupancyLayer.addLayer(m);
       }
       if (o.footprint_geojson) {
         try {
@@ -299,7 +315,7 @@
   }
 
   // --- Geoman drawing --------------------------------------------------------
-  map.pm.addControls({
+  if (!BROWSE) map.pm.addControls({
     position: "topleft",
     drawMarker: true, drawPolyline: true, drawPolygon: true, drawRectangle: true,
     drawCircle: false, drawCircleMarker: false, drawText: false,
@@ -362,7 +378,9 @@
       map.closePopup();
     };
     box.querySelector(".mf-del").onclick = function () {
-      if (confirm("Delete this feature?")) { Store.remove("map_feature", uuid); map.closePopup(); }
+      Dialog.confirm("Delete this feature?", { danger: true }).then(function (ok) {
+        if (ok) { Store.remove("map_feature", uuid); map.closePopup(); }
+      });
     };
   });
 
@@ -384,7 +402,7 @@
       return c;
     }
   });
-  map.addControl(new HydrantControl());
+  if (!BROWSE) map.addControl(new HydrantControl());
   map.on("click", function (e) {
     if (!placingHydrant) return;
     var label = window.prompt("Hydrant label (optional):", "") || "";
@@ -434,7 +452,7 @@
       return wrap;
     }
   });
-  map.addControl(new SymbolPalette());
+  if (!BROWSE) map.addControl(new SymbolPalette());
   map.on("click", function (e) {
     if (!pendingSymbol || measuring || map.pm.globalDrawModeEnabled()) return;
     var sym = SYMBOLS_BY_KEY[pendingSymbol];
@@ -558,10 +576,12 @@
   }
 
   // --- layer control + WMS overlays ------------------------------------------
-  var layersControl = L.control.layers(baseLayers, {
-    "Occupancies": occupancyLayer, "Footprints": footprintLayer, "Hydrants": hydrantLayer,
-    "Access points": accessLayer, "Routes": routeLayer, "Zones": zoneLayer, "Symbols": symbolLayer
-  }, { collapsed: false }).addTo(map);
+  // Browse exposes only Occupancies / Zones / Hydrants (+ base layers); operate the full set.
+  var overlays = BROWSE
+    ? { "Occupancies": occupancyLayer, "Zones": zoneLayer, "Hydrants": hydrantLayer }
+    : { "Occupancies": occupancyLayer, "Footprints": footprintLayer, "Hydrants": hydrantLayer,
+        "Access points": accessLayer, "Routes": routeLayer, "Zones": zoneLayer, "Symbols": symbolLayer };
+  var layersControl = L.control.layers(baseLayers, overlays, { collapsed: false }).addTo(map);
 
   // WMS config is admin/online-only; unavailable offline (fetch simply fails).
   // Some servers advertise layers in GetCapabilities that GetMap can't actually
@@ -580,7 +600,7 @@
     wmsToastTimer = setTimeout(function () { wmsToast.style.display = "none"; }, 12000);
   }
 
-  fetch("/api/wms-layers").then(function (r) { return r.ok ? r.json() : []; })
+  if (!BROWSE) fetch("/api/wms-layers").then(function (r) { return r.ok ? r.json() : []; })
     .then(function (list) {
       list.forEach(function (w) {
         var layer, label;

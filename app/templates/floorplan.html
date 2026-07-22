@@ -16,7 +16,7 @@
     <div class="actions">
       <span id="save-status" class="subtle"></span>
       <form method="post" action="{{ url_for('main.floorplan_delete', fp_id=fp.id) }}"
-            onsubmit="return confirm('Delete this floor plan and its annotations?');">
+            data-confirm="Delete this floor plan and its annotations?" data-confirm-danger>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-danger" type="submit">Delete</button>
       </form>

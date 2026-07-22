@@ -6,8 +6,10 @@ the same objects without creating circular imports.
 from flask_sqlalchemy import SQLAlchemy
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_mail import Mail
 
 db = SQLAlchemy()
+mail = Mail()  # password-reset emails; config comes from MAIL_* (see config.py)
 
 # Storage comes from config (RATELIMIT_STORAGE_URI): in-memory by default, which is
 # fine for a single-process self-host; point it at Redis for a multi-worker

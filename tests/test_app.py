@@ -30,6 +30,8 @@ def _make_config(path, csrf=False, ratelimit=False):
         SQLALCHEMY_TRACK_MODIFICATIONS = False
         WTF_CSRF_ENABLED = csrf
         RATELIMIT_ENABLED = ratelimit
+        MAIL_DEFAULT_SENDER = "noreply@preplanner.test"  # TESTING suppresses real send
+        MAIL_SUPPRESS_SEND = True
     return TestConfig
 
 
@@ -440,15 +442,19 @@ def test_admin_cannot_grant_superuser(app):
         assert db.session.get(User, ids["ff"]).role == "member"
 
 
-def test_cannot_deactivate_last_superuser(app):
-    ids = _dept_with_crew(app)  # the chief is the department's only superuser
-    with app.app_context():  # make the captain an admin so they can use the toggle
+def test_only_superuser_removes_members(app):
+    ids = _dept_with_crew(app)
+    with app.app_context():  # the captain is a plain admin
         db.session.get(User, ids["cap"]).role = "admin"
         db.session.commit()
-    admin = _login_client(app, "cap@e.com")
-    admin.post(f"/users/{ids['chief']}/toggle", follow_redirects=True)
+    admin = _login_client(app, "cap@e.com")  # an admin may NOT remove a member
+    assert admin.post(f"/users/{ids['ff']}/toggle").status_code == 403
     with app.app_context():
-        assert db.session.get(User, ids["chief"]).is_active is True  # still active
+        assert db.session.get(User, ids["ff"]).is_active is True
+    chief = _login_client(app, "chief@e.com")  # the superuser may
+    chief.post(f"/users/{ids['ff']}/toggle", follow_redirects=True)
+    with app.app_context():
+        assert db.session.get(User, ids["ff"]).is_active is False
 
 
 def test_preferences_gates_sections_by_class(app):
@@ -457,6 +463,118 @@ def test_preferences_gates_sections_by_class(app):
     assert b"review policy" in chief.get("/preferences").data.lower()  # superuser section
     ff = _login_client(app, "ff@e.com")
     assert b"review policy" not in ff.get("/preferences").data.lower()
+
+
+# --- rank-edit policy, operational map & password reset ----------------------
+
+def test_rank_edit_policy_gates_editing(app):
+    ids = _dept_with_crew(app)  # rank_edit_policy defaults to "admins"
+    with app.app_context():  # a dedicated target so we never change an actor's own class
+        t = User(email="target@e.com", role="member", rank="Firefighter",
+                 department_id=ids["dept"])
+        t.set_password("pw")
+        db.session.add(t)
+        db.session.commit()
+        tid = t.id
+
+    def can_set(email):
+        c = _login_client(app, email)
+        return c.post(f"/users/{tid}/rank", data={"rank": "Firefighter"},
+                      follow_redirects=True).status_code
+
+    assert can_set("ff@e.com") == 403       # non-officer, "admins"
+    assert can_set("cap@e.com") == 403      # officer, "admins"
+    assert can_set("chief@e.com") == 200    # admin/superuser always
+
+    with app.app_context():
+        db.session.get(Department, ids["dept"]).rank_edit_policy = "officers"
+        db.session.commit()
+    assert can_set("cap@e.com") == 200      # officer now may
+    assert can_set("ff@e.com") == 403       # non-officer still may not
+
+    with app.app_context():
+        db.session.get(Department, ids["dept"]).rank_edit_policy = "all"
+        db.session.commit()
+    assert can_set("ff@e.com") == 200       # any member may
+
+
+def test_operational_map_gated_to_officers(app):
+    ids = _dept_with_crew(app)
+    ff = _login_client(app, "ff@e.com")             # non-officer member
+    assert ff.get("/map").status_code == 200        # lean browse map: everyone
+    assert ff.get("/map/operate").status_code == 403
+    assert _login_client(app, "cap@e.com").get("/map/operate").status_code == 200  # officer
+
+
+def _make_reset_user(app, email="reset@e.com"):
+    from app.models import User
+    with app.app_context():
+        dept = Department(name="Reset Co " + email)
+        db.session.add(dept)
+        db.session.flush()
+        u = User(email=email, role="member", department_id=dept.id)
+        u.set_password("oldpassword1")
+        db.session.add(u)
+        db.session.commit()
+
+
+def _reset_code_from_outbox(outbox):
+    import re
+    return re.search(r"\b(\d{6})\b", outbox[0].body).group(1)
+
+
+def test_password_reset_flow(app):
+    from app.extensions import mail
+    from app.models import User
+    _make_reset_user(app)
+    c = app.test_client()
+    with mail.record_messages() as outbox:
+        c.post("/forgot-password", data={"email": "reset@e.com"}, follow_redirects=True)
+        assert len(outbox) == 1
+        code = _reset_code_from_outbox(outbox)
+
+    # A wrong code leaves the old password intact.
+    c.post("/reset-password", data={"email": "reset@e.com", "code": "000000",
+           "new_password": "newpassword1", "confirm_password": "newpassword1"})
+    with app.app_context():
+        assert User.query.filter_by(email="reset@e.com").first().check_password("oldpassword1")
+
+    # The right code sets the new password (and single-use — a replay then fails).
+    c.post("/reset-password", data={"email": "reset@e.com", "code": code,
+           "new_password": "newpassword1", "confirm_password": "newpassword1"},
+           follow_redirects=True)
+    with app.app_context():
+        assert User.query.filter_by(email="reset@e.com").first().check_password("newpassword1")
+
+
+def test_reset_code_expires(app):
+    from datetime import datetime, timedelta, timezone
+    from app.extensions import mail
+    from app.models import User, PasswordResetCode
+    _make_reset_user(app, "exp@e.com")
+    c = app.test_client()
+    with mail.record_messages() as outbox:
+        c.post("/forgot-password", data={"email": "exp@e.com"})
+        code = _reset_code_from_outbox(outbox)
+    with app.app_context():  # force expiry into the past (naive UTC, like the store)
+        rc = PasswordResetCode.query.first()
+        rc.expires_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1)
+        db.session.commit()
+    c.post("/reset-password", data={"email": "exp@e.com", "code": code,
+           "new_password": "newpassword1", "confirm_password": "newpassword1"})
+    with app.app_context():
+        assert User.query.filter_by(email="exp@e.com").first().check_password("oldpassword1")
+
+
+def test_forgot_password_generic_for_unknown_email(app):
+    from app.extensions import mail
+    c = app.test_client()
+    with mail.record_messages() as outbox:
+        r = c.post("/forgot-password", data={"email": "nobody@nowhere.com"},
+                   follow_redirects=True)
+        assert r.status_code == 200
+        assert len(outbox) == 0                       # no email for an unknown address
+    assert b"If that email is registered" in r.data   # same generic response
 
 
 # --- asset library + pre-plan builder ----------------------------------------
@@ -1375,7 +1493,7 @@ def test_roster_visible_to_member_and_scoped(client, app):
         db.session.commit()
     c = app.test_client()
     login(c, "member@example.com", "longenough1")    # a plain member, not an admin
-    r = c.get("/roster")
+    r = c.get("/roster", follow_redirects=True)       # /roster now merges into /users
     assert r.status_code == 200
     assert b"Pat Member" in r.data                    # own department shown
     assert b"Bravo Person" not in r.data              # other department not shown

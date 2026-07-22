@@ -130,8 +130,18 @@ def index():
 @main_bp.get("/map")
 @login_required
 def map_view():
-    """The interactive map (previously served at /)."""
-    return render_template("index.html")
+    """Lean, read-only area map: browse pre-plans, zones and hydrants."""
+    return render_template("index.html", map_mode="browse")
+
+
+@main_bp.get("/map/operate")
+@login_required
+def operational_map():
+    """The full drawing map (access points, routes, zones, symbols, hydrant placement)
+    for officers and admins."""
+    if not (current_user.is_admin or current_user.is_officer):
+        abort(403)
+    return render_template("index.html", map_mode="operate")
 
 
 @main_bp.get("/sandbox")
