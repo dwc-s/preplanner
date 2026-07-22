@@ -1,0 +1,17 @@
+# Keep the Docker build context small and free of local/secret files.
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+instance/
+images/
+GIS Data/
+.git/
+.gitignore
+.env
+.env.bak
+.DS_Store
+.claude/
+deploy/wsgi_generated.py

@@ -9,7 +9,7 @@ from flask_limiter.util import get_remote_address
 
 db = SQLAlchemy()
 
-# In-memory rate-limit store: fine for a single-process self-host. For a
-# multi-worker deployment, point RATELIMIT_STORAGE_URI at Redis so limits are
-# shared across workers.
+# Storage comes from config (RATELIMIT_STORAGE_URI): in-memory by default, which is
+# fine for a single-process self-host; point it at Redis for a multi-worker
+# deployment so limits are shared. The constructor default is just a fallback.
 limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")

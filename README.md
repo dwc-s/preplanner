@@ -1,201 +1,231 @@
 # Pre-Planner
 
-Free, open-source **fire-service pre-incident planning** software for volunteer
-and call departments. Store building pre-plans (critical fire-ground data,
-hazards, contacts), annotate floor plans, and map hydrants, footprints, access
-points and routes — with per-department accounts so each department sees only
-its own data.
+Free, open-source **fire-service pre-incident planning** for volunteer and call
+departments. Build and share building pre-plans — fire-ground data, hazards,
+contacts, floor plans, photos, and SDS — assemble them into a standard document,
+and map hydrants, footprints, access points, and routes. Every department sees
+only its own data, and it all works **offline in the field** and syncs when you're
+back online.
+
+Runs on modest, free-tier hosting: pure-Python, vendored front-end libraries, no
+system GDAL. **Licensed AGPL-3.0.**
+
+```bash
+git clone https://github.com/dwc-s/preplanner && cd preplanner
+python3 -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python seed.py        # creates the schema + loads a demo department, prints a login
+python run.py         # http://127.0.0.1:5000
+```
+
+Or start empty (no demo data): `flask db upgrade && flask create-admin && python run.py`.
+See [Quick start](#quick-start) for details.
+
+---
+
+## Features
+
+**Getting in**
+- **Public splash + explore-first sandbox** — logged-out visitors get a landing
+  page and can spin up a private, throwaway demo workspace in one click (no signup)
+  to try the whole app. Sandboxes auto-purge.
+- **Accounts, ranks & roster** — session login (Flask-Login), per-department
+  multi-tenancy, admin-managed users (no public signup). Assign fire-service ranks
+  (Chief → Probationary Firefighter); everyone sees the seniority-ordered roster.
+  Login rate-limiting, self-service password change, admin temporary-password reset.
+
+**Home & workflow**
+- **Private dashboard** — your logged-in home: recent department activity, admin
+  **announcements**, and a sortable list of **your pre-plans** with their review
+  **status** and who they're submitted to. (The review workflow itself — reviewer
+  notifications, approve / request-changes — is scaffolded; submission is live.)
+
+**Pre-plans**
+- **Occupancy pre-plans** — construction, condition, fire-protection systems,
+  Knox Box, gate/alarm codes, annunciator, utility shutoffs, water supply, notes,
+  plus inline-editable **hazards** and **contacts**.
+- **Drag-and-drop builder** — assemble a pre-plan document from ordered **elements**
+  (map · floor plans · photos · SDS · inspection reports) in your department's
+  standard order; reorder by dragging. Elements come from the shared library or a
+  fresh upload; SDS links out to chemicalsafety.com's search.
+- **Shared asset library** — upload floor plans, photos, SDS, and documents once and
+  reuse them anywhere. **GPS** is read from photo EXIF, **iPhone HEIC** is transcoded
+  to JPEG, and PDFs/photos are **indexed for full-text search** (image OCR runs in the
+  background). Files are served only through an authenticated, ownership-checked route.
+- **Floor-plan annotation** — mark up uploaded images (rectangles/polygons) with
+  [Annotorious](https://annotorious.dev).
+
+**Map**
+- **Interactive map** — occupancies, footprints, hydrants, access points, routes,
+  and custom zones as toggleable layers. Draw with [Leaflet-Geoman](https://geoman.io),
+  place fire-service **symbols** (FDC, Knox, shutoffs, hazmat, command post, arrows…),
+  **measure** distances, click to place **hydrants** (NFPA 291 flow-class colours),
+  and draw a footprint. The map reopens where you last left it.
+- **Basemaps & overlays** — one-click tiled basemaps (USGS topo/imagery, terrain
+  hillshade, OpenTopoMap) plus **WMS** overlays you add by pasting a server URL and
+  picking from its live layer list.
+- **GIS import** — bulk-import **GeoJSON / KML / GPX / Shapefiles** (zipped or loose
+  parts), auto-reprojected to WGS84 from the `.prj` (pure-Python; no system GDAL),
+  optionally clipped to your map area.
+
+**Platform**
+- **Installable PWA with offline editing + sync** — a local-first store
+  (Dexie / IndexedDB) backs the map and pre-plans, so crews can **view *and* edit**
+  with no signal. Changes queue in an outbox and sync via `/api/sync` on reconnect,
+  with optimistic-concurrency **conflict resolution** (keep-mine / keep-theirs).
+- **JSON / GeoJSON API** — `/api/occupancies`, `/api/footprints`, `/api/hydrants`,
+  `/api/map-features` (CRUD), `/api/wms-layers`.
+- **CSRF** on every write; **database-agnostic** (SQLite → MySQL / PostgreSQL).
+
+---
+
+## Documentation
+
+| Doc | What's in it |
+|-----|--------------|
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | For department admins & members — using every feature |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it's built — factory, models, multi-tenancy, offline sync, the asset pipeline |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup, tests, migrations, CLI, project conventions |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production: Docker, gunicorn, database, scheduled tasks |
+| [deploy/PYTHONANYWHERE.md](deploy/PYTHONANYWHERE.md) | Step-by-step PythonAnywhere + MySQL walkthrough |
+| [CHANGELOG.md](CHANGELOG.md) | Release notes |
+
+---
 
 ## Quick start
 
+Requires **Python 3.10+**.
+
 ```bash
-# 1. Create a virtual environment and install dependencies
+git clone https://github.com/dwc-s/preplanner && cd preplanner
 python3 -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+```
 
-# 2. Create the database schema
-export FLASK_APP=run                 # Windows: set FLASK_APP=run
-flask db upgrade
+**With demo data (fastest):**
 
-# 3. Create your department + first admin account
-flask create-admin
+```bash
+python seed.py     # applies migrations + loads a demo department; prints a login
+python run.py      # serves http://127.0.0.1:5000
+```
 
-# 4. Run it
+`seed.py` prints the demo login (`admin@example.com` / `changeme`). `run.py` applies
+any pending migrations on startup, so a fresh clone just runs.
+
+**Empty install (your own department):**
+
+```bash
+export FLASK_APP=run                 # provided by .flaskenv; Windows: set FLASK_APP=run
+flask db upgrade                     # create the schema
+flask create-admin                   # create your department + first admin
 python run.py
 ```
 
-Open <http://127.0.0.1:5000> and sign in. Prefer a demo with sample data?
-Instead of steps 3–4, run `python seed.py` (loads a demo department plus sample
-occupancies/hydrants) — it prints a demo login.
+Not signed in? The landing page's **"Try the sandbox"** gives a throwaway demo with
+no account.
 
-## What works today
+**Optional — photo text search (OCR):** needs the `tesseract` binary
+(`tesseract --version`; `apt install tesseract-ocr`, or bundled in the Docker image).
+Everything else works without it — image OCR simply waits in a queue.
 
-- **Accounts, ranks & roster** — session login (Flask-Login), department-scoped
-  data, admin-managed users. **No public sign-up**: admins add crew; new
-  departments are created with `flask create-admin`. Assign **fire-service ranks**
-  (Chief → Probationary Firefighter) on the Users page; every member can view the
-  **Roster** (name + rank, by seniority). Every route is behind login and every
-  query is scoped to the user's department. Login is **rate-limited**
-  (Flask-Limiter); users can **change their own password** and admins can issue a
-  **temporary password reset**.
-- **Occupancy pre-plans** — create, edit, search, delete. Construction type,
-  condition, fire-protection systems, Knox Box, gate/alarm codes, annunciator,
-  utility shutoffs, water supply, notes, plus **inline-editable hazards and
-  contacts**. The editor's map shows nearby **hydrants** (toggleable).
-- **Floor plans** — upload images and annotate them (rectangles/polygons for
-  hazards, shutoffs, Knox Box…) with [Annotorious](https://annotorious.dev).
-  Images are served only through an authenticated, ownership-checked route.
-- **Interactive map** — occupancies, footprints, hydrants, access points,
-  routes and custom zones as toggleable layers. Draw features with
-  [Leaflet-Geoman](https://geoman.io); place **fire-service symbols** (FDC, Knox,
-  shutoffs, hazmat, command post…) from a palette; **measure distances** with the
-  ruler; click to place hydrants; draw a building footprint and set its point
-  right on the pre-plan form. The map reopens where you last left it (which also
-  becomes the default GIS-import clip area).
-- **Hydrants** — add/list/delete, NFPA 291 flow-class colour coding.
-- **Basemaps & overlays** — one-click **tiled basemaps** (USGS topo, aerial
-  imagery, terrain hillshade, OpenTopoMap) sit under your pre-plans — a light way
-  to get raster context without importing huge LiDAR/topo files. Add **WMS**
-  layers by pasting a server's URL and **picking from its layer list** (no need to
-  know layer names); each becomes a toggleable overlay.
-- **GIS import** — bulk-import **GeoJSON / KML /
-  GPX / Shapefiles** — either a zipped shapefile or its **loose parts**
-  (`.shp` + `.dbf`/`.shx`/`.prj`), **auto-reprojected to WGS84** from the `.prj`
-  (pure-Python; no system GDAL) — as map features, optionally **clipped to your
-  area** so a statewide file imports just the local subset.
-- **Installable PWA with offline editing + sync** — a local-first store (Dexie /
-  IndexedDB) backs the map and occupancy records, so crews can **view *and* edit**
-  pre-plans with no signal (draw features, edit fields, add hazards/contacts).
-  Changes queue in an outbox and sync via `/api/sync` on reconnect, with
-  **optimistic-concurrency conflict resolution** (keep-mine / keep-theirs on a
-  Conflicts page). Signing out wipes the local store. New floor-plan *image
-  uploads* still need a connection. Add it to a phone's home screen.
-- **JSON/GeoJSON API** — `/api/occupancies`, `/api/footprints`, `/api/hydrants`,
-  `/api/map-features` (CRUD), `/api/wms-layers`.
-- **CSRF protection** on every form and AJAX write (Flask-WTF).
+---
 
 ## Project layout
 
 ```
 preplanner/
-├── run.py               # dev entry point  (python run.py)
-├── config.py            # config; DATABASE_URL, UPLOAD_FOLDER, SECRET_KEY
-├── seed.py              # sample data loader
-├── migrations/          # Alembic (Flask-Migrate) migrations
+├── run.py                 # dev entry point (applies migrations, then serves)
+├── config.py              # config: DATABASE_URL, SECRET_KEY, UPLOAD_FOLDER, limits
+├── seed.py                # demo-data loader (also a reusable department seeder)
+├── requirements.txt       # pure-Python deps (no system GDAL)
+├── Dockerfile             # turnkey container (migrations on start, tesseract bundled)
+├── .env.example           # copy to .env for prod config
+├── migrations/            # Alembic (Flask-Migrate) migrations
 ├── app/
-│   ├── __init__.py      # app factory + CLI (create-admin, seed-db)
-│   ├── extensions.py    # SQLAlchemy instance
-│   ├── models.py        # THE DATA MODEL — read this first
-│   ├── scoping.py       # dept_query / get_owned — tenant isolation chokepoint
-│   ├── auth.py          # login/logout + user management
-│   ├── main.py          # server-rendered pages (map, CRUD, floor plans, overlays)
-│   ├── api.py           # JSON/GeoJSON endpoints
-│   ├── sync.py          # POST /api/sync — offline sync (apply, conflicts, delta)
-│   ├── gis_import.py    # pure-Python GeoJSON/KML/GPX/Shapefile parsers
+│   ├── __init__.py        # app factory + CLI (create-admin, seed-db, purge-sandboxes, ocr-pending)
+│   ├── extensions.py      # SQLAlchemy + Limiter instances
+│   ├── models.py          # THE DATA MODEL — read this first
+│   ├── scoping.py         # dept_query / get_owned — the tenant-isolation chokepoint
+│   ├── auth.py            # login/logout, users, ranks, roster, account
+│   ├── main.py            # server-rendered pages: dashboard, map, pre-plans, builder, library, overlays
+│   ├── api.py             # JSON / GeoJSON endpoints
+│   ├── sync.py            # POST /api/sync — offline sync (apply, conflicts, delta)
+│   ├── assets.py          # asset library file pipeline (naming, GPS, text/OCR, HEIC)
+│   ├── sandbox.py         # ephemeral demo workspaces (create + purge + upload guard)
+│   ├── gis_import.py      # pure-Python GeoJSON/KML/GPX/Shapefile parsers + reprojection
 │   ├── templates/
-│   └── static/          # css + js (store.js = local-first store + sync engine);
-│                        # vendor/ (Leaflet/Geoman/Annotorious/Dexie), sw.js, icons/
-└── tests/               # pytest (auth, isolation, floor plans, features, GIS, limits)
+│   └── static/            # css + js (store.js = local-first store + sync engine),
+│                          # vendor/ (Leaflet/Geoman/Annotorious/Dexie), sw.js, icons/
+├── deploy/                # PythonAnywhere installer, docker-entrypoint, scheduled_tasks.sh, docs
+└── tests/                 # pytest (auth, isolation, pre-plans, builder, GIS, sync, limits)
 ```
 
-## Data model & tenancy
+Full architecture in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-`Department` owns `User`s and all data. `Occupancy` is the central pre-plan
-(with child `Contact` / `Hazard` / `FloorPlan`); `Hydrant` and `MapFeature`
-(access points, routes, zones, custom) are standalone map features. Every
-top-level record carries a `department_id`, and **all** reads go through
-`app/scoping.py` (`dept_query` / `get_owned`) — the single place tenant
-isolation is enforced. Geometry is stored as GeoJSON text so the schema runs
-unchanged on SQLite or Postgres; the hosted PostGIS instance can promote those
-columns to spatial types later. Full detail in [`app/models.py`](app/models.py).
+---
 
-## Database: SQLite → MySQL / PostgreSQL
+## Configuration
 
-Default is a zero-config SQLite file under `instance/`. Point at another database
-by setting `DATABASE_URL` (in the environment or a `.env` file), then run
-migrations:
+Config is read from the environment (or a `.env` file — copy
+[`.env.example`](.env.example)). Real environment variables win over `.env`.
 
-```bash
-# MySQL / MariaDB (e.g. PythonAnywhere)
-DATABASE_URL='mysql+pymysql://user:pass@host/dbname?charset=utf8mb4'
-# PostgreSQL
-DATABASE_URL='postgresql+psycopg://user:pass@localhost/preplanner'
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SECRET_KEY` | dev value | Signs sessions + CSRF. **Set a random one in production.** |
+| `DATABASE_URL` | SQLite in `instance/` | e.g. `mysql+pymysql://…?charset=utf8mb4` or `postgresql+psycopg://…` |
+| `UPLOAD_FOLDER` | `instance/uploads` | Where floor plans + library files are stored |
+| `RATELIMIT_STORAGE_URI` | `memory://` | Point at Redis (`redis://…`) to share login limits across workers |
 
-flask db upgrade
-```
+## CLI commands
 
-Drivers: `PyMySQL` ships in `requirements.txt`; uncomment `psycopg` for Postgres.
-Config can come from a `.env` file (loaded by `config.py`) — see the deploy guide.
-Schema changes are managed with Flask-Migrate: after editing models, run
-`flask db migrate -m "..."` then `flask db upgrade`.
+With `FLASK_APP=run` (set by `.flaskenv`):
 
-## Running the tests
+| Command | Does |
+|---------|------|
+| `flask db upgrade` | Create / migrate the schema |
+| `flask create-admin` | Create a department and its first admin (interactive) |
+| `flask seed-db` | Load the demo department + sample data (idempotent) |
+| `flask ocr-pending` | OCR queued photos (deferred at upload) — wire to cron |
+| `flask purge-sandboxes` | Delete expired demo sandboxes — wire to cron |
+
+The last two are bundled in [`deploy/scheduled_tasks.sh`](deploy/scheduled_tasks.sh)
+for a cron job / scheduled task. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## Tests
 
 ```bash
 pip install -r requirements.txt
-pytest
+pytest        # or: PYTHONPATH=. python -m pytest
 ```
+
+Covers auth + cross-tenant isolation, pre-plan CRUD, the builder/asset library
+(incl. GPS + OCR extraction), offline sync + conflicts, GIS import, and rate limits.
 
 ## Deployment
 
-**PythonAnywhere + MySQL** — a guided installer and full walkthrough live in
-[`deploy/PYTHONANYWHERE.md`](deploy/PYTHONANYWHERE.md). In a PythonAnywhere Bash
-console: `bash deploy/install_pythonanywhere.sh` sets up the virtualenv, `.env`,
-database schema, and your admin account, then prints the Web-tab settings.
+- **Docker (turnkey):** `docker build -t preplanner .` then
+  `docker run -p 8000:8000 -e SECRET_KEY=$(openssl rand -hex 32) -v preplanner-data:/app/instance preplanner`
+  (the container migrates the DB on start; create the first admin with
+  `docker exec -it <c> flask create-admin`).
+- **PythonAnywhere + MySQL:** run `bash deploy/install_pythonanywhere.sh` — see
+  [deploy/PYTHONANYWHERE.md](deploy/PYTHONANYWHERE.md).
+- **Generic (nginx/caddy + gunicorn):** see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-**Generic (nginx/caddy + gunicorn):**
+## Security
 
-```bash
-export SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
-export DATABASE_URL='postgresql+psycopg://...'   # or mysql+pymysql://...
-flask db upgrade
-flask create-admin
-gunicorn "app:create_app()"          # behind nginx/caddy for TLS
-```
-
-Or build the container: `docker build -t preplanner . && docker run -p 8000:8000 -e SECRET_KEY=... preplanner`
-(run `flask db upgrade` / `flask create-admin` inside the container on first
-boot; mount a volume for `instance/` so the SQLite DB and uploads persist).
-
-## Security notes
-
-Auth, per-department isolation, CSRF, authenticated file serving, login
-rate-limiting, and password change/reset are in place. Before exposing a real
-instance to the internet, still add:
-
-- **HTTPS** (terminate TLS at nginx/caddy) and a strong `SECRET_KEY` from the
-  environment — sessions and CSRF depend on it.
-- A **"forgot password" email flow** if you want unattended recovery (today an
-  admin issues a temporary password). For multi-worker deployments, point
-  `RATELIMIT_STORAGE_URI` at Redis so the login limiter is shared across workers.
-- Consider role-gating the most sensitive fields (gate codes / alarm PINs) and
-  an audit log, depending on your threat model.
-
-## Roadmap
-
-Done: auth + multi-tenancy, CSRF, floor-plan annotation, map drawing (footprints,
-access points, routes, custom layers, hydrant placement), account hardening
-(rate-limiting, password change/reset), WMS overlays + GIS import
-(GeoJSON/KML/GPX/Shapefile), and an installable PWA with **offline editing +
-sync** (local-first store, outbox, optimistic-concurrency conflict resolution).
-Next, in rough order:
-
-1. **Offline for floor plans** — queue new image uploads offline (binary sync);
-   currently annotation edits sync but new uploads need a connection.
-2. **Field-level merge** — auto-merge non-overlapping field edits instead of
-   whole-record keep-mine/keep-theirs.
-3. **Forgot-password email** flow (today an admin issues a temporary password).
-4. **Heavier GIS formats** — GeoTIFF/DXF raster & CAD import (vector shapefile
-   CRS reprojection is done, via `pyproj`); report/PDF export for training.
-5. **Layer polish** — opacity, reorder, per-feature styling.
-6. **Dispatch / NERIS / NFPA 1620** alignment.
+Auth, per-department isolation (one chokepoint in `scoping.py`), CSRF on every
+write, authenticated file serving, and login rate-limiting are built in. Before
+exposing a real instance: terminate **TLS** at a reverse proxy, set a strong
+`SECRET_KEY`, and point `RATELIMIT_STORAGE_URI` at Redis if you run multiple
+workers. Sensitive fields (gate codes / alarm PINs) are stored in plaintext — see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#security-model) for the threat model.
 
 ## License
 
-Pre-Planner is licensed under the **GNU Affero General Public License v3.0**
-(AGPL-3.0) — see [LICENSE](LICENSE). The AGPL is deliberate: it keeps the project
-open **even when run as a hosted service** — anyone who offers a modified version
-over a network must make their source available.
+**GNU Affero General Public License v3.0 (AGPL-3.0)** — see [LICENSE](LICENSE). The
+AGPL keeps the project open even when run as a hosted service: anyone offering a
+modified version over a network must publish their source. If you self-host and
+re-brand, swap the logo/splash under `app/static/images/` and the "Pre-Planner" name.
 
-Copyright © 2026 dwcs. See [LICENSE](LICENSE) for the full terms.
+Copyright © 2026 dwcs.

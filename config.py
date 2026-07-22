@@ -42,6 +42,11 @@ class Config:
     # Preserve field order in JSON responses (GeoJSON reads better that way).
     JSON_SORT_KEYS = False
 
+    # Rate-limit store (Flask-Limiter reads this from config). In-memory by default,
+    # which is fine for a single process; for multiple workers point it at Redis so
+    # login limits are shared:  RATELIMIT_STORAGE_URI=redis://localhost:6379
+    RATELIMIT_STORAGE_URI = os.environ.get("RATELIMIT_STORAGE_URI", "memory://")
+
     # Global cap on any request body (uploads: floor plans, library assets, GIS files).
     # 5 GB — generous headroom for large floor-plan PDFs / imagery; the host's own disk
     # quota is the practical limit below this.

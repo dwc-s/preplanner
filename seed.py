@@ -186,7 +186,8 @@ def seed_database():
 if __name__ == "__main__":
     app = create_app()
     with app.app_context():
-        db.create_all()  # convenience for standalone runs on a fresh DB
+        from flask_migrate import upgrade
+        upgrade()  # create/upgrade the schema via migrations (keeps it Alembic-tracked)
         n = seed_database()
     if n:
         print(f"Seeded {n} records.")
