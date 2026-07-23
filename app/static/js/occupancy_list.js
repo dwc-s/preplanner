@@ -44,6 +44,8 @@
 
   Store.ready.then(function () { load(); Store.subscribe(load); });
   search.addEventListener("input", render);
+  // Client-side search only — never actually submit the form (Enter is a no-op).
+  if (search.form) search.form.addEventListener("submit", function (e) { e.preventDefault(); });
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {

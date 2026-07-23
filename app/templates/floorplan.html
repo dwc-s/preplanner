@@ -32,7 +32,7 @@
 
 {% block scripts %}
   <script src="{{ url_for('static', filename='vendor/annotorious/annotorious.js') }}"></script>
-  <script>
+  <script nonce="{{ csp_nonce }}">
     (function () {
       var csrfToken = document.querySelector('meta[name="csrf-token"]').content;
       var saveUrl = "{{ url_for('main.floorplan_annotations', fp_id=fp.id) }}";

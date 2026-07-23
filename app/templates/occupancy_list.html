@@ -9,7 +9,7 @@
 
   {# Client-side search (works offline); the server-rendered rows below are a
      no-JS fallback, replaced by occupancy_list.js from the local store. #}
-  <form class="search" onsubmit="return false;">
+  <form class="search" id="occ-search-form">
     <input type="search" id="occ-search" placeholder="Search name, address, or city…" autofocus>
   </form>
 
@@ -19,7 +19,7 @@
     </thead>
     <tbody id="occ-tbody">
       {% for o in occupancies %}
-        <tr onclick="location.href='{{ url_for('main.occupancy_editor') }}?u={{ o.uuid }}'">
+        <tr>
           <td><a href="{{ url_for('main.occupancy_editor') }}?u={{ o.uuid }}">{{ o.name }}</a></td>
           <td>{{ o.full_address or "—" }}</td>
           <td>{{ o.occupancy_type or "—" }}</td>

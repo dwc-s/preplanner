@@ -1624,3 +1624,87 @@ def test_export_pdf_cross_tenant_404(app):
         oid = Occupancy.query.filter_by(name="A Bldg").first().id
     assert cb.get(f"/occupancies/{oid}/export.pdf").status_code == 404   # not yours
     assert ca.get(f"/occupancies/{oid}/export.pdf").status_code == 200
+
+
+# --- security hardening (review follow-up): GIS parsing + HTTP headers -------
+
+_XML_BOMB = (
+    b'<?xml version="1.0"?>\n'
+    b'<!DOCTYPE lolz [<!ENTITY lol "lol">'
+    b'<!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;">]>\n'
+    b'<kml><Placemark><name>&lol2;</name></Placemark></kml>'
+)
+
+
+def test_gis_import_blocks_xml_entity_expansion():
+    """Untrusted KML/GPX with entity expansion is refused, not expanded (DoS guard)."""
+    from app import gis_import
+    with pytest.raises(Exception):   # defusedxml raises EntitiesForbidden
+        gis_import.parse_kml(_XML_BOMB)
+    with pytest.raises(Exception):
+        gis_import.parse_gpx(_XML_BOMB)
+
+
+def test_gis_import_still_parses_valid_kml():
+    """defusedxml must not break well-formed imports (regression guard)."""
+    from app import gis_import
+    kml = (
+        b'<?xml version="1.0"?>'
+        b'<kml xmlns="http://www.opengis.net/kml/2.2"><Placemark>'
+        b'<name>Hydrant 5</name><Point><coordinates>-83.1,40.2,0</coordinates></Point>'
+        b'</Placemark></kml>'
+    )
+    feats = gis_import.parse_kml(kml)
+    assert len(feats) == 1
+    assert feats[0]["label"] == "Hydrant 5"
+    assert feats[0]["geometry"]["type"] == "Point"
+
+
+def test_gis_import_rejects_zip_bomb(monkeypatch):
+    """A zip whose declared uncompressed size exceeds the cap is refused up front."""
+    import zipfile
+    from app import gis_import
+    monkeypatch.setattr(gis_import, "MAX_UNZIPPED_BYTES", 16)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("layer.shp", b"x" * 1024)   # 1 KB declared — over the 16-byte cap
+    with pytest.raises(ValueError) as exc:
+        gis_import.parse_shapefile_zip(buf.getvalue())
+    assert "uncompressed" in str(exc.value).lower()
+
+
+def test_security_headers_present(app):
+    r = app.test_client().get("/login")
+    csp = r.headers.get("Content-Security-Policy", "")
+    assert "default-src 'self'" in csp
+    assert "frame-ancestors 'none'" in csp
+    assert "object-src 'none'" in csp
+    assert r.headers.get("X-Content-Type-Options") == "nosniff"
+    assert r.headers.get("X-Frame-Options") == "DENY"
+    assert r.headers.get("Referrer-Policy") == "same-origin"
+
+
+def test_csp_nonce_authorizes_inline_script_and_is_fresh(app):
+    """The per-response nonce in the CSP header matches the inline <script>, and rotates."""
+    import re
+    r = app.test_client().get("/login")
+    m = re.search(r"script-src 'self' 'nonce-([^']+)'", r.headers["Content-Security-Policy"])
+    assert m, "CSP is missing a script nonce"
+    nonce = m.group(1)
+    assert ('nonce="%s"' % nonce) in r.get_data(as_text=True)  # inline script carries it
+    r2 = app.test_client().get("/login")                       # a second request…
+    m2 = re.search(r"'nonce-([^']+)'", r2.headers["Content-Security-Policy"])
+    assert m2 and m2.group(1) != nonce                         # …gets a fresh nonce
+
+
+def test_session_cookie_hardened_in_prod_config():
+    """Prod marks the session cookie Secure/HttpOnly/SameSite; TESTING relaxes Secure only."""
+    from config import Config
+    assert Config.SESSION_COOKIE_SECURE is True
+    assert Config.SESSION_COOKIE_HTTPONLY is True
+    assert Config.SESSION_COOKIE_SAMESITE == "Lax"
+
+
+def test_session_cookie_secure_relaxed_under_testing(app):
+    # The test client (and dev server) speak plain HTTP, so Secure must be off there.
+    assert app.config["SESSION_COOKIE_SECURE"] is False

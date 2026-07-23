@@ -9,6 +9,10 @@ server, e.g.  gunicorn "app:create_app()"  — see the Dockerfile / deploy guide
 from app import create_app
 
 app = create_app()
+# The dev server is plain HTTP on localhost; a Secure-only session cookie would
+# never come back, breaking login. Production (gunicorn / the PythonAnywhere WSGI
+# entry) uses the factory directly and keeps Secure cookies on.
+app.config["SESSION_COOKIE_SECURE"] = False
 
 if __name__ == "__main__":
     with app.app_context():

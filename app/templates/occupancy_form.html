@@ -153,7 +153,7 @@
   <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
   <script src="{{ url_for('static', filename='vendor/geoman/leaflet-geoman.min.js') }}"></script>
   {% if client_mode %}
-  <script>
+  <script nonce="{{ csp_nonce }}">
     window.VOCAB = {
       occupancy_types: {{ OCCUPANCY_TYPES | tojson }},
       construction_types: {{ CONSTRUCTION_TYPES | tojson }},

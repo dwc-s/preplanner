@@ -12,7 +12,16 @@ geometry is a GeoJSON geometry. ``category`` is inferred from geometry type.
 import io
 import json
 import zipfile
-import xml.etree.ElementTree as ET
+
+# defusedxml hardens the stdlib parser against maliciously constructed uploads
+# (entity-expansion / "billion laughs", external-entity, DTD-bomb DoS). It returns
+# ordinary ElementTree Elements, so downstream navigation is unchanged.
+from defusedxml.ElementTree import fromstring as _xml_fromstring
+
+# Uploaded Shapefile archives are read into memory; refuse ones that declare a
+# huge uncompressed size so a small "zip bomb" can't exhaust RAM. The size is read
+# from the zip's central directory, so this is checked *before* decompressing.
+MAX_UNZIPPED_BYTES = 256 * 1024 * 1024  # 256 MB across all members
 
 
 def category_for(geom_type):
@@ -80,7 +89,7 @@ def _kml_coords(text):
 
 
 def parse_kml(raw):
-    root = ET.fromstring(raw)
+    root = _xml_fromstring(raw)
     out = []
     for pm in root.iter():
         if _local(pm.tag) != "Placemark":
@@ -116,7 +125,7 @@ def _coords_child(el):
 # --- GPX ---------------------------------------------------------------------
 
 def parse_gpx(raw):
-    root = ET.fromstring(raw)
+    root = _xml_fromstring(raw)
     out = []
 
     for wpt in (e for e in root.iter() if _local(e.tag) == "wpt"):
@@ -269,6 +278,13 @@ def _parse_shapefile(shp, dbf=None, shx=None, prj_text=None, bbox=None, limit=No
 
 def parse_shapefile_zip(raw, bbox=None, limit=None):
     zf = zipfile.ZipFile(io.BytesIO(raw))
+    # Reject zip bombs before reading anything into memory: the declared
+    # uncompressed sizes live in the central directory, so this costs nothing.
+    total_unzipped = sum(zi.file_size for zi in zf.infolist())
+    if total_unzipped > MAX_UNZIPPED_BYTES:
+        raise ValueError(
+            "Archive is too large uncompressed (%d MB, limit %d MB)."
+            % (total_unzipped // (1024 * 1024), MAX_UNZIPPED_BYTES // (1024 * 1024)))
     names = zf.namelist()
     shp_name = next((n for n in names if n.lower().endswith(".shp")), None)
     if not shp_name:

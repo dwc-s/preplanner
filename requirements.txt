@@ -12,6 +12,7 @@ python-dotenv>=1.0         # load config (SECRET_KEY, DATABASE_URL) from .env
 # GIS import (pure-Python, no system GDAL required)
 pyshp>=2.3                 # Shapefile parsing
 pyproj>=3.6                # reproject projected Shapefiles (.prj) to WGS84 (bundles PROJ)
+defusedxml>=0.7            # safe XML parsing for uploaded KML/GPX (blocks entity-expansion DoS)
 
 # Asset library: file naming, GPS-from-photo, and text search
 Pillow>=10.0               # image handling + EXIF GPS extraction

@@ -4,9 +4,10 @@ Keeps app creation in a function so tests can spin up isolated instances and so
 the same code serves dev (SQLite) and production (Postgres) without edits.
 """
 import os
+import secrets
 
 import click
-from flask import Flask, make_response
+from flask import Flask, make_response, g
 from flask_login import LoginManager
 from flask_wtf.csrf import CSRFProtect
 from flask_migrate import Migrate
@@ -81,6 +82,7 @@ def create_app(config_object="config.Config"):
         resp.headers["Cache-Control"] = "no-cache"
         return resp
 
+    _register_security(app)
     _register_cli(app)
 
     # Make the controlled vocabularies available to every template.
@@ -108,6 +110,47 @@ def create_app(config_object="config.Config"):
         }
 
     return app
+
+
+def _register_security(app):
+    """Per-request CSP nonce + security response headers.
+
+    A fresh nonce per response lets our handful of inline <script> blocks run
+    under a strict ``script-src 'self' 'nonce-…'`` — so an injected inline script
+    (which won't carry the nonce) is blocked, while legitimate ones still run.
+    """
+    # The test client speaks plain HTTP, so a Secure-only cookie would never come
+    # back and every authenticated test would fail. Relax it under TESTING only.
+    if app.testing:
+        app.config["SESSION_COOKIE_SECURE"] = False
+
+    @app.before_request
+    def _make_nonce():
+        g.csp_nonce = secrets.token_urlsafe(16)
+
+    @app.context_processor
+    def _inject_nonce():
+        return {"csp_nonce": getattr(g, "csp_nonce", "")}
+
+    @app.after_request
+    def _security_headers(resp):
+        nonce = getattr(g, "csp_nonce", "")
+        resp.headers["Content-Security-Policy"] = "; ".join([
+            "default-src 'self'",
+            "script-src 'self' 'nonce-%s'" % nonce,
+            "style-src 'self' 'unsafe-inline'",   # inline style="…" attributes
+            "img-src 'self' data: blob: https:",  # map tiles (https) + marker data URIs
+            "font-src 'self'",
+            "connect-src 'self' https:",          # WMS GetCapabilities is fetched cross-origin
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            "frame-ancestors 'none'",
+        ])
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["X-Frame-Options"] = "DENY"
+        resp.headers["Referrer-Policy"] = "same-origin"
+        return resp
 
 
 def _register_cli(app):

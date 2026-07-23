@@ -31,6 +31,15 @@ class Config:
     SQLALCHEMY_DATABASE_URI = _DB_URL
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    # Session-cookie hardening. Secure defaults to on, so the cookie is only sent
+    # over HTTPS in production (PythonAnywhere and any real deploy serve HTTPS).
+    # Local HTTP dev relaxes this in run.py; the test client relaxes it in the
+    # app factory. Set SESSION_COOKIE_SECURE=false in .env only for HTTP-only hosts.
+    SESSION_COOKIE_SECURE = os.environ.get(
+        "SESSION_COOKIE_SECURE", "true").lower() in ("1", "true", "yes")
+    SESSION_COOKIE_HTTPONLY = True   # JS can't read the session cookie
+    SESSION_COOKIE_SAMESITE = "Lax"  # not sent on cross-site requests (CSRF depth)
+
     # MySQL hosts (PythonAnywhere included) drop idle connections after a few
     # minutes; recycle below that window and pre-ping so a stale connection is
     # never handed to a request. Harmless/ignored for SQLite.

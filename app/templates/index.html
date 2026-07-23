@@ -12,7 +12,7 @@
 {% endblock %}
 
 {% block scripts %}
-  <script>window.MAP_MODE = "{{ map_mode|default('operate') }}";</script>
+  <script nonce="{{ csp_nonce }}">window.MAP_MODE = "{{ map_mode|default('operate') }}";</script>
   <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
   <script src="{{ url_for('static', filename='vendor/geoman/leaflet-geoman.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/map.js') }}"></script>
