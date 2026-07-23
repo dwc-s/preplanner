@@ -149,7 +149,10 @@ def _register_security(app):
         ])
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["X-Frame-Options"] = "DENY"
-        resp.headers["Referrer-Policy"] = "same-origin"
+        # Send the origin (never the path) on cross-origin requests: the browser
+        # default, and it keeps map-tile / WMS hosts (OpenStreetMap enforces a
+        # tile policy) happy without leaking pre-plan URLs.
+        resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return resp
 
 

@@ -26,7 +26,8 @@
 
   var map = L.map("occ-map").setView(
     hasPoint ? [lat, lon] : [44.2601, -72.5754], hasPoint ? 18 : 13);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  // Canonical single host (OSM deprecated the a/b/c subdomains; see map.js).
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap contributors"
   }).addTo(map);

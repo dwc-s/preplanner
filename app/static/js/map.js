@@ -105,7 +105,10 @@
   // chosen basemap is remembered across sessions like the saved view.
   var BASEMAP_KEY = "preplanner.basemap";
   var baseLayers = {
-    "Street": L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    // Canonical single host — OSM deprecated the a/b/c subdomains, and different
+    // browsers coalesce HTTP/2 connections across those hostnames differently
+    // (a source of Firefox-only 403s). One host is OSM's current recommendation.
+    "Street": L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }),

@@ -1681,7 +1681,7 @@ def test_security_headers_present(app):
     assert "object-src 'none'" in csp
     assert r.headers.get("X-Content-Type-Options") == "nosniff"
     assert r.headers.get("X-Frame-Options") == "DENY"
-    assert r.headers.get("Referrer-Policy") == "same-origin"
+    assert r.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
 
 
 def test_csp_nonce_authorizes_inline_script_and_is_fresh(app):
