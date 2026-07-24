@@ -350,7 +350,9 @@
   // zoom handler: the map lurches to max zoom mid-draw and the shape seems to
   // vanish, which reads as the app "crashing". With finishOn:"dblclick" Geoman
   // suppresses doubleClickZoom while drawing and restores it when the draw ends.
-  map.pm.setGlobalOptions({ finishOn: "dblclick" });
+  // continueDrawing:false disarms the tool after one shape — otherwise Geoman keeps
+  // it armed, so you place + label a marker/polygon and are still stuck in draw mode.
+  map.pm.setGlobalOptions({ finishOn: "dblclick", continueDrawing: false });
 
   // Harden the finish path. Every draw tool keeps a hidden "Finish" action button
   // whose handler calls Draw[shape]._finishShape(); if that tool was never started
@@ -692,13 +694,23 @@
 
   function occNotify(el) { if (occReady && el) el.dispatchEvent(new Event("input", { bubbles: true })); }
 
+  // The building marker's label is the address typed into the form (auto-populated
+  // when you drop the pin), falling back to a hint until an address is entered.
+  function occAddrLabel() {
+    var a = document.querySelector('input[name="address"]');
+    var c = document.querySelector('input[name="city"]');
+    var parts = [a && a.value.trim(), c && c.value.trim()].filter(Boolean);
+    return parts.length ? parts.join(", ") : "Building location — drag to move";
+  }
+  function refreshOccLabel() { if (occMarker) occMarker.setTooltipContent(occAddrLabel()); }
+
   function setOccPoint(latlng) {
     if (occLatEl) occLatEl.value = latlng.lat.toFixed(6);
     if (occLonEl) occLonEl.value = latlng.lng.toFixed(6);
     if (!occMarker) {
       occMarker = L.marker(latlng, { draggable: true, icon: L.divIcon({
         className: "occ-point-marker", html: "🏢", iconSize: [30, 30], iconAnchor: [15, 28] }) }).addTo(map);
-      occMarker.bindTooltip("Building location — click the map or drag to move");
+      occMarker.bindTooltip(occAddrLabel());
       occMarker.on("dragend", function () {
         var ll = occMarker.getLatLng();
         if (occLatEl) occLatEl.value = ll.lat.toFixed(6);
@@ -727,11 +739,15 @@
 
     // Click the map to set the building point — never while another tool is active.
     map.on("click", function (e) {
+      // Click sets the point only when there isn't one yet; once placed, the
+      // marker is dragged to move it. This keeps clicks meant for the drawing
+      // tools or features from ever jerking the building location around.
+      if (occMarker) return;
       if (footprintMode || placingHydrant || pendingSymbol || measuring) return;
       if (map.pm.globalDrawModeEnabled() || map.pm.globalEditModeEnabled() || map.pm.globalRemovalModeEnabled()) return;
       var t = e.originalEvent && e.originalEvent.target;
-      var cls = t && t.getAttribute && t.getAttribute("class");
-      if (cls && /hydrant-marker|lib-marker|occ-point-marker/.test(cls)) return;
+      var cls = (t && t.getAttribute && t.getAttribute("class")) || "";
+      if (/leaflet-interactive|hydrant-marker|lib-marker/.test(cls)) return;  // not on a feature
       setOccPoint(e.latlng);
     });
 
@@ -767,6 +783,42 @@
       }
     });
     map.addControl(new FootprintControl());
+
+    // Keep the marker label in sync as the address is typed.
+    ["address", "city"].forEach(function (n) {
+      var el = document.querySelector('input[name="' + n + '"]');
+      if (el) el.addEventListener("input", refreshOccLabel);
+    });
+
+    // Full-screen toggle: expand the embedded map to fill the window for serious
+    // drawing, with a "Save & return" bar (data autosaves, so returning is enough).
+    var fsBar = null;
+    function setFullscreen(on) {
+      map.getContainer().classList.toggle("fullscreen", on);
+      if (on && !fsBar) {
+        fsBar = L.DomUtil.create("div", "map-fs-bar", map.getContainer());
+        var done = L.DomUtil.create("button", "btn btn-primary", fsBar);
+        done.type = "button"; done.textContent = "Save & return";
+        L.DomEvent.on(done, "click", function (ev) { L.DomEvent.stop(ev); setFullscreen(false); });
+        L.DomEvent.disableClickPropagation(fsBar);
+      }
+      if (fsBar) fsBar.style.display = on ? "" : "none";
+      setTimeout(function () { map.invalidateSize(); }, 60);
+    }
+    var FullscreenControl = L.Control.extend({
+      options: { position: "topright" },
+      onAdd: function () {
+        var c = L.DomUtil.create("div", "leaflet-bar fs-control");
+        var b = L.DomUtil.create("a", "", c);
+        b.href = "#"; b.title = "Full screen"; b.innerHTML = "&#9974;";  // ⛶
+        L.DomEvent.on(b, "click", function (ev) {
+          L.DomEvent.preventDefault(ev); L.DomEvent.stopPropagation(ev);
+          setFullscreen(!map.getContainer().classList.contains("fullscreen"));
+        });
+        return c;
+      }
+    });
+    map.addControl(new FullscreenControl());
 
     setTimeout(function () { map.invalidateSize(); }, 200);  // laid out inside a long form
     occReady = true;

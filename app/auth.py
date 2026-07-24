@@ -311,10 +311,53 @@ def user_set_co(user_id):
     return redirect(url_for("auth.users_list"))
 
 
+@auth_bp.post("/users/<int:user_id>/name")
+@admin_required
+def user_set_name(user_id):
+    """Edit a crew member's display name."""
+    user = (User.query
+            .filter_by(id=user_id, department_id=current_user.department_id)
+            .first_or_404())
+    user.name = (request.form.get("name") or "").strip()[:200] or None
+    db.session.commit()
+    if request.headers.get("X-Autosave") == "1":
+        return jsonify(ok=True)
+    flash(f"Updated name for {user.email}.", "success")
+    return redirect(url_for("auth.users_list"))
+
+
+@auth_bp.post("/users/<int:user_id>/email")
+@admin_required
+def user_set_email(user_id):
+    """Edit a crew member's email — their login, so it must stay valid and unique."""
+    user = (User.query
+            .filter_by(id=user_id, department_id=current_user.department_id)
+            .first_or_404())
+    autosave = request.headers.get("X-Autosave") == "1"
+
+    def _fail(msg):
+        if autosave:
+            return jsonify(ok=False, error=msg), 200
+        flash(msg, "error")
+        return redirect(url_for("auth.users_list"))
+
+    email = (request.form.get("email") or "").strip().lower()
+    if not email or "@" not in email or "." not in email.rsplit("@", 1)[-1]:
+        return _fail("Enter a valid email address.")
+    if User.query.filter(User.email == email, User.id != user.id).first():
+        return _fail("That email is already in use.")
+    user.email = email
+    db.session.commit()
+    if autosave:
+        return jsonify(ok=True)
+    flash(f"Updated email to {email}.", "success")
+    return redirect(url_for("auth.users_list"))
+
+
 @auth_bp.post("/users/<int:user_id>/special-role")
-@superuser_required
+@admin_required
 def user_set_special_role(user_id):
-    """Set a member's free-text special role (e.g. "EMS officer"). Superuser only."""
+    """Set a member's free-text special role (e.g. "EMS officer"). Admin or superuser."""
     user = (User.query
             .filter_by(id=user_id, department_id=current_user.department_id)
             .first_or_404())

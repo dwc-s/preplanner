@@ -457,24 +457,45 @@ def test_only_superuser_removes_members(app):
         assert db.session.get(User, ids["ff"]).is_active is False
 
 
-def test_superuser_sets_special_role_others_cannot(app):
-    """Only the superuser may set a member's free-text special role (item 4)."""
+def test_admin_edits_roster_name_email_special_role(app):
+    """Admins (not just the superuser) may edit name, email, and special role (item 2)."""
     ids = _dept_with_crew(app)
-    chief = _login_client(app, "chief@e.com")
-    r = chief.post(f"/users/{ids['cap']}/special-role",
-                   data={"special_role": "EMS officer"}, follow_redirects=True)
-    assert r.status_code == 200
-    with app.app_context():
-        assert db.session.get(User, ids["cap"]).special_role == "EMS officer"
-    # a non-superuser (the captain, even as admin) may not
-    with app.app_context():
+    with app.app_context():  # the captain becomes a plain admin
         db.session.get(User, ids["cap"]).role = "admin"
         db.session.commit()
     admin = _login_client(app, "cap@e.com")
     assert admin.post(f"/users/{ids['ff']}/special-role",
-                      data={"special_role": "nope"}).status_code == 403
+                      data={"special_role": "EMS officer"}, follow_redirects=True).status_code == 200
+    assert admin.post(f"/users/{ids['ff']}/name",
+                      data={"name": "Joe FF"}, follow_redirects=True).status_code == 200
+    assert admin.post(f"/users/{ids['ff']}/email",
+                      data={"email": "joe2@e.com"}, follow_redirects=True).status_code == 200
     with app.app_context():
-        assert db.session.get(User, ids["ff"]).special_role is None
+        u = db.session.get(User, ids["ff"])
+        assert u.special_role == "EMS officer" and u.name == "Joe FF" and u.email == "joe2@e.com"
+
+
+def test_member_cannot_edit_roster_fields(app):
+    """A plain member is forbidden from the roster edit routes (item 2)."""
+    ids = _dept_with_crew(app)
+    member = _login_client(app, "ff@e.com")  # role == member
+    for path, data in (("name", {"name": "x"}), ("email", {"email": "x@e.com"}),
+                       ("special-role", {"special_role": "x"})):
+        assert member.post(f"/users/{ids['cap']}/{path}", data=data).status_code == 403
+
+
+def test_user_set_email_rejects_blank_and_duplicate(app):
+    """Editing a member's email rejects blank/invalid and duplicates (item 2)."""
+    ids = _dept_with_crew(app)
+    chief = _login_client(app, "chief@e.com")  # superuser is an admin
+    dup = chief.post(f"/users/{ids['ff']}/email",
+                     data={"email": "chief@e.com"}, headers={"X-Autosave": "1"})
+    assert dup.get_json()["ok"] is False  # already in use
+    blank = chief.post(f"/users/{ids['ff']}/email",
+                       data={"email": ""}, headers={"X-Autosave": "1"})
+    assert blank.get_json()["ok"] is False
+    with app.app_context():
+        assert db.session.get(User, ids["ff"]).email == "ff@e.com"  # unchanged
 
 
 def test_preferences_gates_sections_by_class(app):

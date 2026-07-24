@@ -20,6 +20,9 @@
   var titleEl = document.getElementById("occ-title");
   var childWrap = document.getElementById("occ-children");
   var vocab = window.VOCAB || {};
+  // True while a hazard/contact row is swapped to inline inputs, so a background
+  // sync or another store change doesn't re-render the list and wipe the edit.
+  var inlineEditing = false;
 
   function gather() {
     var data = {};
@@ -53,7 +56,10 @@
         renderChildren(rec);
       });
     }
-    Store.subscribe(function () { if (uuid) Store.get("occupancy", uuid).then(function (r) { if (r) renderChildren(r); }); });
+    Store.subscribe(function () {
+      if (inlineEditing) return;  // don't clobber an open inline edit
+      if (uuid) Store.get("occupancy", uuid).then(function (r) { if (r) renderChildren(r); });
+    });
   });
 
   // --- real-time autosave -----------------------------------------------------
@@ -189,6 +195,7 @@
       b.onclick = function () {
         var h = (hazards || []).filter(function (x) { return x.uuid === b.getAttribute("data-edit-hazard"); })[0];
         if (!h) return;
+        inlineEditing = true;
         var tr = b.closest("tr");
         tr.innerHTML =
           '<td><select class="e-type">' + opt(vocab.hazard_types, h.hazard_type) + '</select></td>' +
@@ -200,18 +207,20 @@
         tr.querySelector(".e-save").onclick = function () {
           var t = tr.querySelector(".e-type").value;
           if (!t) { Dialog.alert("Hazard type is required."); return; }
+          inlineEditing = false;  // saved edit → allow the re-render it triggers
           Store.update("hazard", h.uuid, { hazard_type: t,
             severity: tr.querySelector(".e-sev").value || null,
             location: tr.querySelector(".e-loc").value || null,
             description: tr.querySelector(".e-desc").value || null });
         };
-        tr.querySelector(".e-cancel").onclick = function () { renderChildren(occ); };
+        tr.querySelector(".e-cancel").onclick = function () { inlineEditing = false; renderChildren(occ); };
       };
     });
     childWrap.querySelectorAll("[data-edit-contact]").forEach(function (b) {
       b.onclick = function () {
         var c = (contacts || []).filter(function (x) { return x.uuid === b.getAttribute("data-edit-contact"); })[0];
         if (!c) return;
+        inlineEditing = true;
         var tr = b.closest("tr");
         tr.innerHTML =
           '<td><input class="e-name" value="' + esc(c.name || "") + '"></td>' +
@@ -223,12 +232,13 @@
         tr.querySelector(".e-save").onclick = function () {
           var n = tr.querySelector(".e-name").value;
           if (!n) { Dialog.alert("Contact name is required."); return; }
+          inlineEditing = false;  // saved edit → allow the re-render it triggers
           Store.update("contact", c.uuid, { name: n,
             role: tr.querySelector(".e-role").value || null,
             phone: tr.querySelector(".e-phone").value || null,
             email: tr.querySelector(".e-email").value || null });
         };
-        tr.querySelector(".e-cancel").onclick = function () { renderChildren(occ); };
+        tr.querySelector(".e-cancel").onclick = function () { inlineEditing = false; renderChildren(occ); };
       };
     });
   }

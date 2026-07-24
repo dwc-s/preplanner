@@ -74,9 +74,12 @@
     </fieldset>
 
     <fieldset>
-      <legend>Location &amp; footprint</legend>
+      <legend>Location, footprint &amp; map annotations</legend>
       <div id="occ-map" class="occ-map"></div>
-      <p class="hint">Click the map to set the building's location. Use the polygon/rectangle tools (top-left) to draw its footprint.</p>
+      <p class="hint">Click the map to drop the building's location (then drag the pin to fine-tune).
+        Then <strong>annotate the area</strong>: use the ⊞ tool to trace the building footprint, and the
+        drawing tools to add access points, apparatus routes, hazard zones, fire-service symbols, and
+        hydrants. Use the ⛶ button (top-right) to open the map full-screen.</p>
       <div class="grid">
         {{ tfield(form, 'latitude', 'Latitude', placeholder='44.2601') }}
         {{ tfield(form, 'longitude', 'Longitude', placeholder='-72.5754') }}

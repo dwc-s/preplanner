@@ -12,4 +12,11 @@ Start at the project [README](../README.md) for an overview and quick start.
   databases, scheduled tasks, backups, checklist.
 - **[../deploy/PYTHONANYWHERE.md](../deploy/PYTHONANYWHERE.md)** — step-by-step
   PythonAnywhere + MySQL walkthrough.
+- **[../ROADMAP.md](../ROADMAP.md)** — where the project may go next; research to revisit.
 - **[../CHANGELOG.md](../CHANGELOG.md)** — release notes.
+
+### Research & background
+
+- **[fire-preplanning-software-research.md](fire-preplanning-software-research.md)** —
+  market survey of commercial fire pre-incident-planning software (competitor pricing,
+  contract values, feature sets). Parked on the [roadmap](../ROADMAP.md) for later.

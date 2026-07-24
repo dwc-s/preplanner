@@ -6,16 +6,33 @@
     <h1>Roster — {{ current_user.department.name }}</h1>
   </div>
 
+  <div class="table-scroll">
   <table class="table">
     <thead>
-      <tr><th>Name</th><th>Email</th><th>Rank</th><th>Role <span class="help" title="Superuser = the department's top authority, usually the Chief (full control). Admin = manages the roster &amp; settings. Member = standard access.">i</span></th><th>Special role</th><th>Commanding officer</th><th>Status</th>{% if current_user.is_admin %}<th></th>{% endif %}</tr>
+      <tr><th>Name</th><th>Email</th><th>Rank</th><th>Role <span class="help" data-tip="Superuser = the department's top authority, usually the Chief (full control). Admin = manages the roster &amp; settings. Member = standard access.">i</span></th><th>Special role</th><th>Commanding officer</th><th>Status</th>{% if current_user.is_admin %}<th></th>{% endif %}</tr>
     </thead>
     <tbody>
       {# Members see the active roster; admins additionally see deactivated accounts. #}
       {% for u in users if u.is_active or current_user.is_admin %}
         <tr>
-          <td>{{ u.name or "—" }}</td>
-          <td>{{ u.email }}</td>
+          <td>
+            {% if current_user.is_admin %}
+            <form method="post" action="{{ url_for('auth.user_set_name', user_id=u.id) }}"
+                  data-autosave data-autosave-compact>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="name" value="{{ u.name or '' }}" placeholder="—" style="width:9rem;">
+            </form>
+            {% else %}{{ u.name or "—" }}{% endif %}
+          </td>
+          <td>
+            {% if current_user.is_admin %}
+            <form method="post" action="{{ url_for('auth.user_set_email', user_id=u.id) }}"
+                  data-autosave data-autosave-compact>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="email" name="email" value="{{ u.email }}" style="width:12rem;">
+            </form>
+            {% else %}{{ u.email }}{% endif %}
+          </td>
           <td>
             {% if can_edit_ranks %}
             <form method="post" action="{{ url_for('auth.user_set_rank', user_id=u.id) }}"
@@ -46,7 +63,7 @@
             {% else %}{{ u.role }}{% endif %}
           </td>
           <td>
-            {% if current_user.is_superuser %}
+            {% if current_user.is_admin %}
             <form method="post" action="{{ url_for('auth.user_set_special_role', user_id=u.id) }}"
                   data-autosave data-autosave-compact>
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -95,6 +112,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% if not current_user.is_admin %}
   <p class="hint">Ranks and roles are managed by your department's officers and admins.</p>
   {% endif %}

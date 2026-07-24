@@ -130,8 +130,6 @@ FIRE_RANKS = [
     "Assistant Chief",
     "Captain",
     "Lieutenant",
-    "Firefighter/Paramedic",
-    "Firefighter/EMT",
     "Firefighter",
     "Probationary Firefighter",
 ]

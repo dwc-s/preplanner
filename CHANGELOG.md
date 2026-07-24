@@ -10,6 +10,35 @@ Pre-Planner has not yet cut a numbered release — everything below is on the
 
 ### Added
 
+**Roles, review workflow & roster**
+- A **superuser** role — the department's top authority (default: the Chief), above admin
+  — and **officer** status derived from rank. A real **pre-plan review workflow**: officers
+  and members create plans; non-officers submit for review, routed to their commanding
+  officer; the superuser chooses whether officer-created plans go to the chief, a
+  commanding officer, or are auto-approved. Reviewers **approve** or **request changes**
+  from the dashboard.
+- A **Preferences** page (class-gated) where the superuser sets the review policy and who
+  may edit ranks. Officers can be given a free-text **special role** (e.g. "EMS officer").
+- The **roster** is now fully editable by admins — name, email, rank, role, special role,
+  and commanding officer, inline; deactivating members and granting the superuser role
+  stay superuser-only.
+- **Self-service password reset** — a "Forgot password?" link emails a 15-minute,
+  single-use code (SMTP, e.g. Porkbun); rate-limited, with no account-existence leak.
+
+**Map, library & UI**
+- **Full drawing toolset in the pre-plan editor** — set the building's location, trace its
+  footprint (a dedicated tool), and annotate the surrounding area with access points,
+  apparatus routes, hazard zones, fire-service symbols, and hydrants. A **full-screen**
+  button expands the map to the whole window with a *Save & return* bar.
+- A lean, read-only **browse map** at `/map` — pre-plan pins with hover summaries and a
+  toggleable **Library files** layer showing geotagged photos.
+- An **image lightbox** — click a library photo (or a photo pin on the map) to view it
+  full-window; press Esc to close.
+- **App-native confirm/alert dialogs** (replacing the browser's), and help **tooltips that
+  appear instantly** on hover.
+- A project **roadmap** (`ROADMAP.md`) and a competitive **market survey** of commercial
+  fire pre-incident-planning software (`docs/`).
+
 **Exports, autosave & UX polish**
 - **PDF export** — download any pre-plan as a formatted PDF from its page or the
   builder. The structured record, contacts, hazards, and builder elements render in
@@ -133,6 +162,16 @@ Pre-Planner has not yet cut a numbered release — everything below is on the
   `tesseract` binary if present. Upload cap raised to 5 GB.
 
 ### Changed
+- The full drawing tools moved from a standalone "Operational Map" into the **pre-plan
+  editor**; `/map` is now the lean browse map, and Users + Roster are one page.
+- A **gradient** top bar; the main content area widened to ~90%; **PT Serif** app-wide.
+- Ranks simplified — **Firefighter/EMT** and **Firefighter/Paramedic** collapsed into a
+  single **Firefighter** (existing members migrated).
+- The building marker is placed by a single click and **dragged** to move it (so clicks
+  meant for the drawing tools never nudge it), and is **labelled with the address** you
+  typed. Finishing a shape now **disarms** the draw tool instead of leaving it armed.
+- Map tiles use OpenStreetMap's canonical host — the deprecated `a/b/c` subdomains caused
+  Firefox-only 403s. `Referrer-Policy` is the standard `strict-origin-when-cross-origin`.
 - Polylines and polygons now **finish on double-click** — the instinctive gesture.
   Previously a double-click fell through to the map's zoom, so the map lurched to
   full zoom mid-draw and the shape appeared to vanish; you had to click the first
@@ -144,6 +183,11 @@ Pre-Planner has not yet cut a numbered release — everything below is on the
   edits appear on a plain refresh; production still gets full offline/PWA caching.
 
 ### Fixed
+- Photo **GPS extraction** hardened for iPhone HEIC — it now reads the raw EXIF block when
+  the parsed GPS IFD comes back empty, so geotagged photos land on the map.
+- In-progress inline **hazard/contact edits** are no longer wiped when a background sync
+  (or another change) re-renders the list.
+- The wide **roster** table scrolls sideways instead of hiding its right-hand columns.
 - Drawing a polygon or line can no longer crash the map. Leaflet-Geoman keeps a
   hidden "Finish" control for every draw tool; triggering one for a tool that was
   never started left its working layer undefined and threw deep inside Geoman
@@ -160,6 +204,12 @@ Pre-Planner has not yet cut a numbered release — everything below is on the
 - A corrupt/partial saved map view is ignored instead of breaking map startup.
 
 ### Security
+- A nonce-based **Content-Security-Policy**, plus `X-Content-Type-Options`,
+  `X-Frame-Options`, and `Referrer-Policy` headers; the session cookie is **Secure /
+  HttpOnly / SameSite=Lax** in production.
+- **Untrusted GIS uploads** hardened: KML/GPX are parsed with `defusedxml` (blocking
+  entity-expansion "billion laughs" DoS), and zipped shapefiles are refused above a
+  decompressed-size cap (a zip-bomb guard).
 - Licensed under **AGPL-3.0** — modifications offered over a network must publish
   their source.
 - The local `GIS Data/` working folder (large rasters/shapefiles) is gitignored.

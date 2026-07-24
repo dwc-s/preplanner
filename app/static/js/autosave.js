@@ -46,7 +46,10 @@
     saved: function (p) {
       set(p, "saved", LABELS.saved[p && p.classList.contains("autosave-compact") ? 1 : 0]);
     },
-    error: function (p) { set(p, "error", LABELS.error[p && p.classList.contains("autosave-compact") ? 1 : 0]); }
+    error: function (p, msg) {
+      set(p, "error", msg || LABELS.error[p && p.classList.contains("autosave-compact") ? 1 : 0]);
+      if (p) p.title = msg || "";  // full reason on hover for compact pills
+    }
   };
 
   function wire(form) {
@@ -69,7 +72,7 @@
       }).then(function (data) {
         inflight = false;
         if (data && data.ok) window.Autosave.saved(pill);
-        else window.Autosave.error(pill);
+        else window.Autosave.error(pill, data && data.error);  // show the server's reason
         if (again) { again = false; save(); }
       }).catch(function () {
         inflight = false;
