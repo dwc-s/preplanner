@@ -6,9 +6,19 @@
 (function () {
   "use strict";
 
-  // "browse" = the lean read-only area map (/map); otherwise the full "operate" map
-  // (/map/operate) with drawing/symbol/hydrant tools.
-  var BROWSE = window.MAP_MODE === "browse";
+  // This module builds either the standalone area map (index.html sets
+  // window.MAP_MODE = "browse"/"operate") or the pre-plan editor map embedded in
+  // the occupancy form (occupancy_form.html sets window.MAP_INIT = {el, mode,
+  // occupancy}). The whole body is wrapped in buildMap() so the occupancy form can
+  // defer it until occupancy.js has populated the inputs (see dispatch at bottom).
+  var CFG = window.MAP_INIT || {};
+  var MAP_EL = CFG.el || "map";
+  var OCC = CFG.occupancy || null;   // {latSel, lonSel, fpSel, id?} on the pre-plan form
+  var MODE = CFG.mode || window.MAP_MODE || "operate";
+  // "browse" = the lean read-only area map (/map); "operate" = the full toolset.
+  var BROWSE = MODE === "browse";
+
+  function buildMap() {
 
   var FEATURE_COLORS = { "Access Point": "#1c7ed6", "Route": "#e8590c",
     "Hazard Zone": "#e03131", "Custom": "#7048e8", "Symbol": "#495057" };
@@ -89,17 +99,25 @@
   function loadSavedView() {
     try { return JSON.parse(localStorage.getItem(VIEW_KEY) || "null"); } catch (e) { return null; }
   }
-  var savedView = loadSavedView();
+  var savedView = OCC ? null : loadSavedView();   // the pre-plan map centers on its building
   if (savedView && !(typeof savedView.lat === "number" && typeof savedView.lng === "number"
       && typeof savedView.zoom === "number")) {
     savedView = null;  // ignore a corrupt / partial saved view
   }
 
+  // The pre-plan editor centers on the building's point when it already has one.
+  var occStart = null;
+  if (OCC) {
+    var _la = parseFloat((document.querySelector(OCC.latSel) || {}).value);
+    var _lo = parseFloat((document.querySelector(OCC.lonSel) || {}).value);
+    if (!isNaN(_la) && !isNaN(_lo)) occStart = [_la, _lo];
+  }
+
   // maxZoom is fixed on the map so adding a tile overlay can't push the zoom
   // range past the OSM base (which stops at 19).
-  var map = L.map("map", { maxZoom: 19 }).setView(
-    savedView ? [savedView.lat, savedView.lng] : [44.2601, -72.5754],
-    savedView ? savedView.zoom : 13);
+  var map = L.map(MAP_EL, { maxZoom: 19 }).setView(
+    occStart || (savedView ? [savedView.lat, savedView.lng] : [44.2601, -72.5754]),
+    occStart ? 18 : (savedView ? savedView.zoom : 13));
   // Switchable base layers (radio in the layer control). Same tile sources the admin
   // "Add basemap" presets use (main.py PRESET_BASEMAPS). Street is the default; the
   // chosen basemap is remembered across sessions like the saved view.
@@ -138,7 +156,7 @@
       }));
     } catch (e) {}
   }
-  map.on("moveend", saveView);
+  if (!OCC) map.on("moveend", saveView);  // don't let the pre-plan map clobber the dept view
 
   // Browse shows only Occupancies, Zones and Hydrants; the rest are operate-only.
   var occupancyLayer = L.layerGroup().addTo(map);
@@ -148,6 +166,7 @@
   var accessLayer = L.layerGroup();
   var routeLayer = L.layerGroup();
   var symbolLayer = L.layerGroup();
+  var libraryLayer = L.layerGroup();  // geotagged library photos (browse map)
   if (!BROWSE) [footprintLayer, accessLayer, routeLayer, symbolLayer].forEach(function (g) { g.addTo(map); });
 
   var rendered = {};  // map_feature uuid -> { layer, group, sig }
@@ -350,6 +369,11 @@
   });
 
   map.on("pm:create", function (e) {
+    if (OCC && footprintMode) {   // drawn via the Footprint control → this building's outline
+      footprintMode = false;
+      setFootprint(e.layer);
+      return;
+    }
     var layer = e.layer;
     var gj = layer.toGeoJSON();  // capture geometry now; act after Geoman finishes
     var category = categoryForGeometry(gj.geometry.type);
@@ -581,10 +605,36 @@
   // --- layer control + WMS overlays ------------------------------------------
   // Browse exposes only Occupancies / Zones / Hydrants (+ base layers); operate the full set.
   var overlays = BROWSE
-    ? { "Occupancies": occupancyLayer, "Zones": zoneLayer, "Hydrants": hydrantLayer }
+    ? { "Occupancies": occupancyLayer, "Zones": zoneLayer, "Hydrants": hydrantLayer,
+        "Library files": libraryLayer }
     : { "Occupancies": occupancyLayer, "Footprints": footprintLayer, "Hydrants": hydrantLayer,
         "Access points": accessLayer, "Routes": routeLayer, "Zones": zoneLayer, "Symbols": symbolLayer };
   var layersControl = L.control.layers(baseLayers, overlays, { collapsed: false }).addTo(map);
+
+  // Geotagged library photos as a toggleable "Library files" layer (browse map).
+  // Assets aren't in the offline Store, so fetch them directly; markers open the
+  // picture in the lightbox (or link out for non-images).
+  if (BROWSE) {
+    libraryLayer.addTo(map);
+    fetch("/api/library-locations").then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (items) {
+        items.forEach(function (a) {
+          if (a.latitude == null || a.longitude == null) return;
+          var m = L.marker([a.latitude, a.longitude], {
+            icon: L.divIcon({ className: "lib-marker", html: "📷",
+              iconSize: [26, 26], iconAnchor: [13, 13] })
+          }).addTo(libraryLayer);
+          var t = esc(a.title || "");
+          var body = a.is_image
+            ? '<img class="lib-pop-img" src="' + a.url + '" alt="" data-lightbox ' +
+              'data-src="' + a.url + '" data-title="' + t + '">' +
+              '<button type="button" class="btn btn-sm btn-primary" data-lightbox ' +
+              'data-src="' + a.url + '" data-title="' + t + '">View full size</button>'
+            : '<a class="btn btn-sm btn-primary" href="' + a.url + '" target="_blank" rel="noopener">Open file</a>';
+          m.bindPopup('<div class="popup lib-pop"><h3>' + (t || "Photo") + "</h3>" + body + "</div>");
+        });
+      }).catch(function () { /* offline or none */ });
+  }
 
   // WMS config is admin/online-only; unavailable offline (fetch simply fails).
   // Some servers advertise layers in GetCapabilities that GetMap can't actually
@@ -633,6 +683,95 @@
       });
     }).catch(function () { /* offline — no WMS */ });
 
+  // --- pre-plan editor: building point + footprint (occupancy form only) ------
+  // Declared at buildMap scope so the pm:create handler above can branch on them.
+  var footprintMode = false, footprintLayer = null, occMarker = null, occReady = false;
+  var occLatEl = OCC ? document.querySelector(OCC.latSel) : null;
+  var occLonEl = OCC ? document.querySelector(OCC.lonSel) : null;
+  var occFpEl = OCC ? document.querySelector(OCC.fpSel) : null;
+
+  function occNotify(el) { if (occReady && el) el.dispatchEvent(new Event("input", { bubbles: true })); }
+
+  function setOccPoint(latlng) {
+    if (occLatEl) occLatEl.value = latlng.lat.toFixed(6);
+    if (occLonEl) occLonEl.value = latlng.lng.toFixed(6);
+    if (!occMarker) {
+      occMarker = L.marker(latlng, { draggable: true, icon: L.divIcon({
+        className: "occ-point-marker", html: "🏢", iconSize: [30, 30], iconAnchor: [15, 28] }) }).addTo(map);
+      occMarker.bindTooltip("Building location — click the map or drag to move");
+      occMarker.on("dragend", function () {
+        var ll = occMarker.getLatLng();
+        if (occLatEl) occLatEl.value = ll.lat.toFixed(6);
+        if (occLonEl) occLonEl.value = ll.lng.toFixed(6);
+        occNotify(occLatEl);
+      });
+    } else { occMarker.setLatLng(latlng); }
+    occNotify(occLatEl);
+  }
+
+  function serializeFootprint() {
+    if (occFpEl) occFpEl.value = footprintLayer ? JSON.stringify(footprintLayer.toGeoJSON().geometry) : "";
+    occNotify(occFpEl);
+  }
+  function setFootprint(layer) {
+    if (footprintLayer) map.removeLayer(footprintLayer);
+    footprintLayer = layer;
+    if (layer.setStyle) layer.setStyle({ color: "#c0392b", weight: 2, fillOpacity: 0.1 });
+    layer.addTo(map);
+    layer.on("pm:update pm:dragend", serializeFootprint);
+    serializeFootprint();
+  }
+
+  if (OCC) {
+    if (occStart) setOccPoint(L.latLng(occStart[0], occStart[1]));
+
+    // Click the map to set the building point — never while another tool is active.
+    map.on("click", function (e) {
+      if (footprintMode || placingHydrant || pendingSymbol || measuring) return;
+      if (map.pm.globalDrawModeEnabled() || map.pm.globalEditModeEnabled() || map.pm.globalRemovalModeEnabled()) return;
+      var t = e.originalEvent && e.originalEvent.target;
+      var cls = t && t.getAttribute && t.getAttribute("class");
+      if (cls && /hydrant-marker|lib-marker|occ-point-marker/.test(cls)) return;
+      setOccPoint(e.latlng);
+    });
+
+    // Load an existing footprint (editable via Geoman edit/drag).
+    if (occFpEl && occFpEl.value) {
+      try {
+        var g0 = JSON.parse(occFpEl.value); if (g0.type === "Feature") g0 = g0.geometry;
+        var loaded = L.geoJSON({ type: "Feature", geometry: g0 }).getLayers()[0];
+        footprintLayer = loaded;
+        if (loaded.setStyle) loaded.setStyle({ color: "#c0392b", weight: 2, fillOpacity: 0.1 });
+        loaded.addTo(map);
+        loaded.on("pm:update pm:dragend", serializeFootprint);
+      } catch (e) { /* ignore malformed footprint */ }
+    }
+    map.on("pm:remove", function (e) {
+      if (e.layer === footprintLayer) { footprintLayer = null; serializeFootprint(); }
+    });
+
+    // A dedicated Footprint control — distinct from the shared zone/route/feature tools.
+    var FootprintControl = L.Control.extend({
+      options: { position: "topleft" },
+      onAdd: function () {
+        var c = L.DomUtil.create("div", "leaflet-bar footprint-control");
+        var b = L.DomUtil.create("a", "", c);
+        b.href = "#"; b.title = "Draw the building footprint"; b.innerHTML = "&#8862;";  // ⊞
+        L.DomEvent.on(b, "click", function (ev) {
+          L.DomEvent.preventDefault(ev); L.DomEvent.stopPropagation(ev);
+          footprintMode = true; disarmSymbol(); stopMeasure(); placingHydrant = false;
+          map.getContainer().style.cursor = "";
+          map.pm.enableDraw("Polygon", { finishOn: "dblclick" });
+        });
+        return c;
+      }
+    });
+    map.addControl(new FootprintControl());
+
+    setTimeout(function () { map.invalidateSize(); }, 200);  // laid out inside a long form
+    occReady = true;
+  }
+
   // --- boot: render from the store, re-render on store changes ---------------
   var didFit = false;
   function renderAll() {
@@ -642,7 +781,7 @@
       renderOccupancies(r[0]);
       renderHydrants(r[1]);
       renderFeatures(r[2]);
-      if (!didFit) { if (!savedView) fit(); didFit = true; }  // saved view wins
+      if (!didFit) { if (!savedView && !occStart) fit(); didFit = true; }  // saved view / building wins
     });
   }
   function fit() {
@@ -662,5 +801,21 @@
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
+  }
+  }  // end buildMap
+
+  // Dispatch. On the occupancy form (window.MAP_INIT set), expose the build as
+  // window.initOccMap and honor occupancy.js's __occDeferMapInit deferral (so the
+  // local-first editor can populate the inputs first); otherwise build immediately.
+  if (window.MAP_INIT) {
+    window.initOccMap = function () {
+      var el = document.getElementById(MAP_EL);
+      if (!el || el._ppBuilt) return;   // guard double-init
+      el._ppBuilt = true;
+      buildMap();
+    };
+    if (!window.__occDeferMapInit) window.initOccMap();
+  } else if (document.getElementById("map")) {
+    buildMap();
   }
 })();

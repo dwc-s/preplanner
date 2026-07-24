@@ -457,6 +457,26 @@ def test_only_superuser_removes_members(app):
         assert db.session.get(User, ids["ff"]).is_active is False
 
 
+def test_superuser_sets_special_role_others_cannot(app):
+    """Only the superuser may set a member's free-text special role (item 4)."""
+    ids = _dept_with_crew(app)
+    chief = _login_client(app, "chief@e.com")
+    r = chief.post(f"/users/{ids['cap']}/special-role",
+                   data={"special_role": "EMS officer"}, follow_redirects=True)
+    assert r.status_code == 200
+    with app.app_context():
+        assert db.session.get(User, ids["cap"]).special_role == "EMS officer"
+    # a non-superuser (the captain, even as admin) may not
+    with app.app_context():
+        db.session.get(User, ids["cap"]).role = "admin"
+        db.session.commit()
+    admin = _login_client(app, "cap@e.com")
+    assert admin.post(f"/users/{ids['ff']}/special-role",
+                      data={"special_role": "nope"}).status_code == 403
+    with app.app_context():
+        assert db.session.get(User, ids["ff"]).special_role is None
+
+
 def test_preferences_gates_sections_by_class(app):
     _dept_with_crew(app)
     chief = _login_client(app, "chief@e.com")
@@ -498,12 +518,13 @@ def test_rank_edit_policy_gates_editing(app):
     assert can_set("ff@e.com") == 200       # any member may
 
 
-def test_operational_map_gated_to_officers(app):
-    ids = _dept_with_crew(app)
+def test_browse_map_open_and_operational_map_removed(app):
+    """The lean browse /map is for everyone; the standalone Operational Map is gone
+    (its full toolset now lives in the pre-plan editor). /map/operate 404s."""
+    _dept_with_crew(app)
     ff = _login_client(app, "ff@e.com")             # non-officer member
     assert ff.get("/map").status_code == 200        # lean browse map: everyone
-    assert ff.get("/map/operate").status_code == 403
-    assert _login_client(app, "cap@e.com").get("/map/operate").status_code == 200  # officer
+    assert ff.get("/map/operate").status_code == 404  # route removed
 
 
 def _make_reset_user(app, email="reset@e.com"):
@@ -602,6 +623,21 @@ def test_library_upload_reads_gps(client, app):
         assert a.longitude and -72.6 < a.longitude < -72.5
 
 
+def test_library_locations_endpoint_lists_geotagged_only(client, app):
+    """/api/library-locations returns only dept assets that carry coordinates (item 10)."""
+    client.post("/library/upload", data={"kind": "photo", "title": "Geo shot",
+        "file": (_gps_jpeg(), "geo.jpg")}, content_type="multipart/form-data",
+        follow_redirects=True)
+    client.post("/library/upload", data={"kind": "document", "title": "Plain doc",
+        "file": (io.BytesIO(b"%PDF-1.4 minimal"), "d.pdf")},
+        content_type="multipart/form-data", follow_redirects=True)
+    data = client.get("/api/library-locations").get_json()
+    titles = [d["title"] for d in data]
+    assert "Geo shot" in titles and "Plain doc" not in titles  # only geotagged
+    geo = next(d for d in data if d["title"] == "Geo shot")
+    assert 44.2 < geo["latitude"] < 44.3 and geo["is_image"] is True and "/library/" in geo["url"]
+
+
 def test_library_heic_transcoded_to_jpeg(client, app):
     """iPhone HEIC photos are accepted, transcoded to JPEG for display, and keep GPS."""
     from PIL import Image
@@ -626,7 +662,7 @@ def test_library_heic_transcoded_to_jpeg(client, app):
 
 def test_library_corrupt_heic_is_graceful(client, app):
     """A corrupt/fake HEIC must flash an error, not 500, and leave no dangling row."""
-    r = client.post("/library/upload", data={"kind": "photo",
+    r = client.post("/library/upload", data={"kind": "photo", "title": "Fake photo",
         "file": (io.BytesIO(b"not a real heic file"), "fake.heic")},
         content_type="multipart/form-data", follow_redirects=True)
     assert r.status_code == 200
@@ -637,9 +673,19 @@ def test_library_corrupt_heic_is_graceful(client, app):
 
 def test_library_rejects_non_media(client, app):
     r = client.post("/library/upload", data={
-        "kind": "document", "file": (io.BytesIO(b"hello"), "notes.txt"),
+        "kind": "document", "title": "Notes", "file": (io.BytesIO(b"hello"), "notes.txt"),
     }, content_type="multipart/form-data", follow_redirects=True)
     assert "unsupported" in r.get_data(as_text=True).lower()
+    with app.app_context():
+        assert Asset.query.count() == 0
+
+
+def test_library_upload_requires_descriptive_title(client, app):
+    """The standalone Library form rejects a blank title (item 6)."""
+    r = client.post("/library/upload", data={
+        "kind": "photo", "file": (io.BytesIO(b"x"), "photo.jpg")},
+        content_type="multipart/form-data", follow_redirects=True)
+    assert "descriptive title" in r.get_data(as_text=True).lower()
     with app.app_context():
         assert Asset.query.count() == 0
 

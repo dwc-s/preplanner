@@ -152,6 +152,13 @@
 {% block scripts %}
   <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
   <script src="{{ url_for('static', filename='vendor/geoman/leaflet-geoman.min.js') }}"></script>
+  <script nonce="{{ csp_nonce }}">
+    // Build the full-toolset "operate" map on this form's #occ-map, with the
+    // building point + footprint plugged in (map.js reads this).
+    window.MAP_INIT = { el: "occ-map", mode: "operate", occupancy: {
+      latSel: 'input[name="latitude"]', lonSel: 'input[name="longitude"]',
+      fpSel: 'input[name="footprint_geojson"]'{% if occupancy %}, id: {{ occupancy.id }}{% endif %} } };
+  </script>
   {% if client_mode %}
   <script nonce="{{ csp_nonce }}">
     window.VOCAB = {
@@ -165,5 +172,5 @@
   </script>
   <script src="{{ url_for('static', filename='js/occupancy.js') }}"></script>
   {% endif %}
-  <script src="{{ url_for('static', filename='js/occupancy_form_map.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/map.js') }}"></script>
 {% endblock %}

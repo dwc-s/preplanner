@@ -8,7 +8,7 @@
 
   <table class="table">
     <thead>
-      <tr><th>Name</th><th>Email</th><th>Rank</th><th>Role</th><th>Commanding officer</th><th>Status</th>{% if current_user.is_admin %}<th></th>{% endif %}</tr>
+      <tr><th>Name</th><th>Email</th><th>Rank</th><th>Role <span class="help" title="Superuser = the department's top authority, usually the Chief (full control). Admin = manages the roster &amp; settings. Member = standard access.">i</span></th><th>Special role</th><th>Commanding officer</th><th>Status</th>{% if current_user.is_admin %}<th></th>{% endif %}</tr>
     </thead>
     <tbody>
       {# Members see the active roster; admins additionally see deactivated accounts. #}
@@ -44,6 +44,16 @@
               </select>
             </form>
             {% else %}{{ u.role }}{% endif %}
+          </td>
+          <td>
+            {% if current_user.is_superuser %}
+            <form method="post" action="{{ url_for('auth.user_set_special_role', user_id=u.id) }}"
+                  data-autosave data-autosave-compact>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="special_role" value="{{ u.special_role or '' }}"
+                     placeholder="e.g. EMS officer" maxlength="80" style="width:9rem;">
+            </form>
+            {% else %}{{ u.special_role or "—" }}{% endif %}
           </td>
           <td>
             {% if current_user.is_admin %}

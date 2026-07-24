@@ -6,11 +6,11 @@ and rely on the CSRF token sent in the ``X-CSRFToken`` header (see base.html).
 """
 import json
 
-from flask import Blueprint, jsonify, request, abort
+from flask import Blueprint, jsonify, request, abort, url_for
 from flask_login import login_required, current_user
 
 from .extensions import db
-from .models import Occupancy, Hydrant, MapFeature, WmsLayer, MAP_FEATURE_CATEGORIES
+from .models import Occupancy, Hydrant, MapFeature, WmsLayer, Asset, MAP_FEATURE_CATEGORIES
 from .scoping import dept_query, get_owned
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
@@ -47,6 +47,21 @@ def hydrants_geojson():
     """Hydrants for the current department."""
     features = [h.to_geojson_feature() for h in dept_query(Hydrant).all()]
     return jsonify(_feature_collection(features))
+
+
+@api_bp.get("/library-locations")
+@login_required
+def library_locations():
+    """Geotagged library assets (photos whose EXIF carried GPS) for the map's
+    Library layer. Only assets with coordinates can appear on a map."""
+    assets = (dept_query(Asset)
+              .filter(Asset.latitude.isnot(None), Asset.longitude.isnot(None)).all())
+    return jsonify([{
+        "id": a.id, "title": a.title, "kind": a.kind,
+        "latitude": a.latitude, "longitude": a.longitude,
+        "url": url_for("main.asset_file", asset_id=a.id),
+        "is_image": bool(a.content_type and a.content_type.startswith("image/")),
+    } for a in assets])
 
 
 @api_bp.get("/wms-layers")

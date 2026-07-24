@@ -134,16 +134,6 @@ def map_view():
     return render_template("index.html", map_mode="browse")
 
 
-@main_bp.get("/map/operate")
-@login_required
-def operational_map():
-    """The full drawing map (access points, routes, zones, symbols, hydrant placement)
-    for officers and admins."""
-    if not (current_user.is_admin or current_user.is_officer):
-        abort(403)
-    return render_template("index.html", map_mode="operate")
-
-
 @main_bp.get("/sandbox")
 def sandbox_redirect():
     """A bare GET must never create anything — crawlers, link prefetchers, and
@@ -325,7 +315,7 @@ def occupancy_submit_review(occ_id):
             reviewer = author.commanding_officer or chief
         if reviewer is None or reviewer.id == author.id:
             flash("No reviewer is set up — ask an admin to assign you a commanding "
-                  "officer (or designate a chief).", "error")
+                  "officer (or designate a Chief).", "error")
             return redirect(url_for("main.index"))
         occ.status = "in_review"
         occ.submitted_to_id = reviewer.id
@@ -718,6 +708,10 @@ def library_upload():
 
     if not file or not file.filename:
         return _retry("Choose a file to upload.")
+    # A descriptive title is required for the standalone Library form; builder
+    # quick-uploads (occ_id present) auto-title from the filename to stay frictionless.
+    if not title and not occ_id:
+        return _retry("Give the file a specific, descriptive title.")
     if ext_of(file.filename) not in ALLOWED_ASSET_EXTS:
         return _retry("Unsupported file type. Upload an image (PNG/JPG/…) or a PDF.")
     try:

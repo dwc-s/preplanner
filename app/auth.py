@@ -311,6 +311,21 @@ def user_set_co(user_id):
     return redirect(url_for("auth.users_list"))
 
 
+@auth_bp.post("/users/<int:user_id>/special-role")
+@superuser_required
+def user_set_special_role(user_id):
+    """Set a member's free-text special role (e.g. "EMS officer"). Superuser only."""
+    user = (User.query
+            .filter_by(id=user_id, department_id=current_user.department_id)
+            .first_or_404())
+    user.special_role = (request.form.get("special_role") or "").strip()[:80] or None
+    db.session.commit()
+    if request.headers.get("X-Autosave") == "1":
+        return jsonify(ok=True)
+    flash(f"Updated special role for {user.email}.", "success")
+    return redirect(url_for("auth.users_list"))
+
+
 @auth_bp.post("/users/<int:user_id>/role")
 @admin_required
 def user_set_role(user_id):

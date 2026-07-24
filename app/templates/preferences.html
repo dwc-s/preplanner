@@ -10,6 +10,7 @@
       <h2>Account</h2>
       <p class="subtle">Signed in as {{ current_user.email }} — {{ current_user.department.name }}
         · {{ current_user.role }}{% if current_user.rank %} · {{ current_user.rank }}{% endif %}
+        {% if current_user.special_role %} · {{ current_user.special_role }}{% endif %}
         · {{ "Officer" if current_user.is_officer else "Non-officer" }}</p>
       <form method="post" action="{{ url_for('auth.account') }}" class="pref-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -26,7 +27,7 @@
     {# --- Review policy (superuser only) --- #}
     {% if current_user.is_superuser %}
     <section class="card">
-      <h2>Pre-plan review policy <span class="pref-badge">Superuser</span></h2>
+      <h2>Pre-plan review policy <span class="pref-badge">Superuser</span><span class="help" title="The department's top authority (usually the Chief) — full control over roles, review routing, and members.">i</span></h2>
       <p class="subtle">How <strong>officer</strong>-created pre-plans are routed for review.
         Non-officers always go to their commanding officer.</p>
       <form method="post" action="{{ url_for('auth.set_review_policy') }}" class="pref-form">
@@ -43,7 +44,7 @@
     </section>
 
     <section class="card">
-      <h2>Roster permissions <span class="pref-badge">Superuser</span></h2>
+      <h2>Roster permissions <span class="pref-badge">Superuser</span><span class="help" title="The department's top authority (usually the Chief) — full control over roles, review routing, and members.">i</span></h2>
       <p class="subtle">Who may edit members' ranks on the Roster page. (Admins &amp;
         superuser always can.)</p>
       <form method="post" action="{{ url_for('auth.set_rank_edit_policy') }}" class="pref-form">

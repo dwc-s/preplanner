@@ -14,7 +14,8 @@
     <select name="kind" aria-label="Type">
       {% for k in ASSET_KINDS %}<option value="{{ k }}" {% if k == up_kind %}selected{% endif %}>{{ ASSET_KIND_LABELS[k] }}</option>{% endfor %}
     </select>
-    <input type="text" name="title" placeholder="Title (optional)" value="{{ request.args.get('up_title', '') }}">
+    <input type="text" name="title" placeholder="Title — specific &amp; descriptive (e.g. “North stairwell, 3rd floor”)"
+           value="{{ request.args.get('up_title', '') }}" required>
     <input type="file" name="file" accept="image/*,.heic,.heif,application/pdf" required>
     <button class="btn btn-primary" type="submit">Upload</button>
   </form>
@@ -53,12 +54,17 @@
 <div class="asset-grid">
   {% for a in assets %}
   <div class="asset-card">
+    {% if a.content_type and a.content_type.startswith('image/') %}
+    <button type="button" class="asset-thumb" data-lightbox
+            data-src="{{ url_for('main.asset_file', asset_id=a.id) }}" data-title="{{ a.title }}">
+      <img src="{{ url_for('main.asset_file', asset_id=a.id) }}" alt="{{ a.title }}" loading="lazy">
+    </button>
+    {% else %}
     <a class="asset-thumb" href="{{ url_for('main.asset_file', asset_id=a.id) }}"
        target="_blank" rel="noopener">
-      {% if a.content_type and a.content_type.startswith('image/') %}
-      <img src="{{ url_for('main.asset_file', asset_id=a.id) }}" alt="{{ a.title }}" loading="lazy">
-      {% else %}<span class="asset-file-icon">{{ (a.filename or 'file').rsplit('.', 1)[-1]|upper }}</span>{% endif %}
+      <span class="asset-file-icon">{{ (a.filename or 'file').rsplit('.', 1)[-1]|upper }}</span>
     </a>
+    {% endif %}
     <div class="asset-body">
       <strong class="asset-title" title="{{ a.title }}">{{ a.title }}</strong>
       <div class="asset-tags">

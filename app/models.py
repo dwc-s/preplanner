@@ -99,7 +99,7 @@ PREPLAN_STATUSES = ["draft", "in_review", "approved", "needs_changes"]
 OFFICER_REVIEW_POLICIES = ["commanding_officer", "chief", "auto_approve"]
 OFFICER_REVIEW_POLICY_LABELS = {
     "commanding_officer": "Send to the officer's commanding officer",
-    "chief": "Send to the chief",
+    "chief": "Send to the Chief",
     "auto_approve": "Automatically approved (no review)",
 }
 
@@ -108,7 +108,7 @@ OFFICER_REVIEW_POLICY_LABELS = {
 RANK_EDIT_POLICIES = ["admins", "officers", "all"]
 RANK_EDIT_POLICY_LABELS = {
     "admins": "Admins & superuser only",
-    "officers": "Officers and up",
+    "officers": "Any officer.",
     "all": "Any member",
 }
 
@@ -239,6 +239,8 @@ class User(UserMixin, db.Model):
     name = db.Column(db.String(200))
     role = db.Column(db.String(20), nullable=False, default="member")
     rank = db.Column(db.String(40))  # fire-service rank (see FIRE_RANKS)
+    # Free-text special designation the superuser can assign (e.g. "EMS officer").
+    special_role = db.Column(db.String(80))
     department_id = db.Column(
         db.Integer, db.ForeignKey("department.id"), nullable=False
     )

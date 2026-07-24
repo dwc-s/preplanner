@@ -74,11 +74,35 @@ def _gps_from_exif(exif):
         return None, None
 
 
+def _image_gps(img):
+    """(lat, lng) from an open PIL image, robust across formats.
+
+    Tries ``getexif()`` first, then falls back to parsing the raw EXIF bytes in
+    ``img.info["exif"]``. The fallback matters for many iPhone HEIC photos, where
+    ``getexif().get_ifd(GPSInfo)`` comes back empty even though the file is
+    geotagged (a pillow-heif/libheif quirk) — the raw block still has the GPS IFD.
+    """
+    lat, lng = _gps_from_exif(img.getexif())
+    if lat is None and lng is None:
+        raw = img.info.get("exif")
+        if raw:
+            try:
+                from PIL import Image
+                if raw[:6] == b"Exif\x00\x00":
+                    raw = raw[6:]
+                exif = Image.Exif()
+                exif.load(raw)
+                lat, lng = _gps_from_exif(exif)
+            except Exception:
+                pass
+    return lat, lng
+
+
 def _exif_gps(path):
     """(lat, lng) from an image file's EXIF GPS, or (None, None)."""
     try:
         from PIL import Image
-        return _gps_from_exif(Image.open(path).getexif())
+        return _image_gps(Image.open(path))
     except Exception:
         return None, None
 
@@ -133,7 +157,7 @@ def save_asset(file, kind, dept_id, uploaded_by, title=None):
         path = os.path.join(dest_dir, stored)
         try:
             img = Image.open(file.stream)
-            asset.latitude, asset.longitude = _gps_from_exif(img.getexif())
+            asset.latitude, asset.longitude = _image_gps(img)
             ImageOps.exif_transpose(img).convert("RGB").save(path, format="JPEG", quality=88)
         except Exception:
             db.session.rollback()

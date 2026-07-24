@@ -56,7 +56,7 @@ a:hover { text-decoration: underline; }
   display: flex; align-items: center; gap: .8rem;
   min-height: var(--topbar-h);
   padding: .4rem 1rem;
-  background: linear-gradient(to right, var(--red), var(--bg));
+  background: linear-gradient(to right, var(--red) 0%, var(--red) 18%, var(--bg) 55%);
   color: #fff;
   box-shadow: var(--shadow);
   position: sticky; top: 0; z-index: 1000;
@@ -112,7 +112,7 @@ a:hover { text-decoration: underline; }
 .auth-card form { display: grid; gap: .8rem; margin: 1.2rem 0; }
 .auth-card .btn-primary { width: 100%; padding: .6rem; }
 
-.container { max-width: 1080px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
+.container { width: 90%; max-width: 1600px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
 .full { flex: 1 1 auto; min-height: 0; display: flex; }
 #map { flex: 1 1 auto; min-height: 0; width: 100%; }
 
@@ -273,6 +273,12 @@ th[data-sort].sort-desc::after { content: " \25BC"; font-size: .7em; }
 .pref-form { display: grid; gap: .8rem; margin-top: .6rem; }
 .pref-badge { font-size: .68rem; background: var(--red); color: #fff; padding: .1rem .45rem;
   border-radius: 999px; vertical-align: middle; margin-left: .35rem; font-weight: 600; }
+/* A discreet circled-i whose native title tooltip explains an unfamiliar term. */
+.help { display: inline-flex; align-items: center; justify-content: center;
+  width: 1.05em; height: 1.05em; margin-left: .3rem; border-radius: 999px;
+  border: 1px solid currentColor; font-size: .72em; font-style: normal; font-weight: 700;
+  line-height: 1; cursor: help; opacity: .7; vertical-align: middle; }
+.help:hover { opacity: 1; }
 .field-radio { display: flex; align-items: center; gap: .5rem; }
 
 /* App-native confirm/alert dialog (dialog.js). */
@@ -304,9 +310,24 @@ th[data-sort].sort-desc::after { content: " \25BC"; font-size: .7em; }
   border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
   display: flex; flex-direction: column; }
 .asset-thumb { display: flex; align-items: center; justify-content: center; height: 130px;
-  background: #f4f6f8; overflow: hidden; }
+  width: 100%; padding: 0; border: none; background: #f4f6f8; overflow: hidden; cursor: pointer; }
 .asset-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .asset-file-icon { font-weight: 700; color: var(--muted); font-size: 1.1rem; letter-spacing: .05em; }
+
+/* Full-window image viewer (lightbox.js) */
+.lightbox { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center;
+  justify-content: center; padding: 2rem; background: rgba(0,0,0,.85); }
+.lightbox[hidden] { display: none; }
+.lightbox-fig { margin: 0; display: flex; flex-direction: column; align-items: center;
+  gap: .6rem; max-width: 100%; max-height: 100%; }
+.lightbox-img { max-width: 100%; max-height: 85vh; object-fit: contain; background: #fff;
+  border-radius: 4px; box-shadow: 0 8px 40px rgba(0,0,0,.5); }
+.lightbox-cap { color: #fff; font-size: .95rem; text-align: center; max-width: 60ch; }
+.lightbox-close { position: fixed; top: 1rem; right: 1.25rem; width: 2.4rem; height: 2.4rem;
+  border: none; border-radius: 999px; background: rgba(255,255,255,.15); color: #fff;
+  font-size: 1.7rem; line-height: 1; cursor: pointer; }
+.lightbox-close:hover { background: rgba(255,255,255,.3); }
+body.lightbox-open { overflow: hidden; }
 .asset-body { padding: .6rem .7rem; display: grid; gap: .35rem; }
 .asset-title { font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .asset-tags { display: flex; align-items: center; gap: .4rem; }
@@ -439,6 +460,14 @@ th[data-sort].sort-desc::after { content: " \25BC"; font-size: .7em; }
 .map-symbol-btn.active { background: #ffe3e3; }
 .map-symbol { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 20px; padding: 0 4px; border-radius: 4px; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .3px; box-shadow: 0 1px 2px rgba(0,0,0,.35); white-space: nowrap; }
 .map-symbol-icon { background: none; border: 0; }
+/* Geotagged library-photo markers + their popups (browse map "Library files" layer) */
+.lib-marker { font-size: 20px; line-height: 26px; text-align: center; filter: drop-shadow(0 1px 1px rgba(0,0,0,.4)); }
+.lib-pop-img { display: block; max-width: 220px; max-height: 160px; margin: .35rem 0 .5rem;
+  border-radius: 4px; cursor: zoom-in; }
+/* Pre-plan editor: the building point marker + the dedicated footprint tool */
+.occ-point-marker { font-size: 22px; line-height: 30px; text-align: center; cursor: grab;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
+.footprint-control a { font-weight: 700; font-size: 16px; }
 .map-arrow { display: inline-block; line-height: 0; transform-origin: 50% 50%; filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1px #fff); }
 .map-arrow-swatch { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 22px; }
 .map-arrow-swatch svg { width: 22px; height: 22px; }
